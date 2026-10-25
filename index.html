@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" id="hsg-meta-theme-color" content="#FFEA00" />
+    <script>
+      (function () {
+        try {
+          var c1 = localStorage.getItem('hsg_theme_color_1');
+          var c2 = localStorage.getItem('hsg_theme_color_2');
+          if (c1) {
+            document.documentElement.style.setProperty('--hsg-color-1', c1);
+            var m = document.getElementById('hsg-meta-theme-color');
+            if (m) m.setAttribute('content', c1);
+          }
+          if (c2) {
+            document.documentElement.style.setProperty('--hsg-color-2', c2);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>HSG+ Community</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:ital,wght@0,800;0,900;1,800;1,900&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-[#F6F6F9] text-[#141416] antialiased selection:bg-[#EC008C] selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
