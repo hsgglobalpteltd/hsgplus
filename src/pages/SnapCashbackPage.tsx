@@ -19,6 +19,8 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
 }) => {
   const {
     activeCampaign,
+    activeCampaigns,
+    setActiveCampaignId,
     submitCashbackClaim,
     showToast,
   } = useHsgData();
@@ -45,8 +47,25 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
       setTotalAmount('');
       setVelocityAnswer(null);
       setCustomAnswers({});
+      setReceiptAttached(false);
+      setReceiptPhotoUrl('');
+      setReceiptPreviewUrl('');
+      setReceiptFileName('');
     }
-  }, [activeCampaign]);
+  }, [activeCampaign?.id]);
+
+  // Preload all active campaign posters into browser memory for 0ms instant tab switching
+  useEffect(() => {
+    if (activeCampaigns && activeCampaigns.length > 0) {
+      activeCampaigns.forEach((camp) => {
+        const url = (camp as any)?.poster_url || (camp as any)?.promo_card_url || camp?.banner_image_url;
+        if (url) {
+          const img = new Image();
+          img.src = url;
+        }
+      });
+    }
+  }, [activeCampaigns]);
 
   const formatDate = (ts?: number) => {
     if (!ts) return '';
@@ -140,7 +159,7 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
     }
 
     if (!totalAmount || Number(totalAmount) <= 0) {
-      showToast('Please enter the total purchase amount paid on your receipt.');
+      showToast('Please enter the amount paid for this item.');
       return;
     }
 
@@ -189,6 +208,24 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
     onSuccessDone();
   };
 
+  // Get clean Brand Name + Reward for scrollable pill tab
+  const getCampaignTabLabel = (camp: any) => {
+    const brand = (camp.brand || camp.brand_name || 'HSG+').trim();
+    const rType = camp.reward?.type || camp.reward_type || camp.purchase_reward_mode || 'cashback';
+    const rCash = Number(camp.reward?.cash !== undefined ? camp.reward.cash : (camp.reward_cash !== undefined ? camp.reward_cash : (camp.cashback_amount || 0)));
+    const rPoints = Number(camp.reward?.points !== undefined ? camp.reward.points : (camp.reward_points || 0));
+
+    let rewardStr = '';
+    if (rType === 'both') {
+      rewardStr = "+$" + rCash.toFixed(2) + " & " + rPoints + " Pts";
+    } else if (rType === 'points') {
+      rewardStr = "+" + (rPoints || rCash) + " Pts";
+    } else {
+      rewardStr = "+$" + rCash.toFixed(2);
+    }
+    return { brand, rewardStr };
+  };
+
   const posterImg =
     (activeCampaign as any)?.poster_url ||
     (activeCampaign as any)?.promo_card_url ||
@@ -197,6 +234,57 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
 
   return (
     <div className="w-full flex flex-col space-y-4 pb-24">
+      {/* 0. MULTI-CAMPAIGN SCROLLABLE PILL BAR (Max 4 Active Campaigns, Brand + Reward) */}
+      {activeCampaigns && activeCampaigns.length > 1 && (
+        <div className="w-full px-4 pt-0.5">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar scroll-smooth pt-1 pb-3 -mb-3">
+            {activeCampaigns.map((camp) => {
+              const isSelected = camp.id === activeCampaign?.id;
+              const { brand, rewardStr } = getCampaignTabLabel(camp);
+              return (
+                <button
+                  key={camp.id}
+                  type="button"
+                  onClick={(e) => {
+                    setActiveCampaignId(camp.id);
+                    e.currentTarget.scrollIntoView({
+                      behavior: 'smooth',
+                      inline: 'center',
+                      block: 'nearest',
+                    });
+                  }}
+                  className={`relative h-9 px-3.5 rounded-full font-bold text-xs shrink-0 whitespace-nowrap flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs ${
+                    isSelected
+                      ? 'bg-[#141416] text-white border border-[#141416]'
+                      : 'bg-white text-zinc-700 border border-zinc-200/90 hover:bg-zinc-50'
+                  }`}
+                >
+                  <span className="uppercase tracking-wide">{brand}</span>
+                  <span className="text-zinc-400 font-normal">•</span>
+                  <span
+                    className={
+                      isSelected
+                        ? 'text-white font-extrabold'
+                        : 'text-zinc-900 font-extrabold'
+                    }
+                  >
+                    {rewardStr}
+                  </span>
+
+                  {/* Active Downward Pointer Arrow (Larger, floating over margin) */}
+                  {isSelected && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -bottom-[9px] left-1/2 -translate-x-1/2 w-0 h-0 border-x-[8px] border-x-transparent border-t-[9px] border-t-[#141416] pointer-events-none z-20"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {!activeCampaign ? (
         <div className="w-full p-8 rounded-3xl bg-white text-center shadow-xs">
           <p className="text-sm font-semibold text-zinc-500">
@@ -206,13 +294,36 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
       ) : (
         <form onSubmit={handleSubmit} className="w-full space-y-4">
           {/* 1. CAMPAIGN POSTER (4:5 or 1:1) & BASIC DETAILS */}
-          <div className="w-full rounded-3xl overflow-hidden bg-white shadow-xs border border-zinc-200/60">
-            {posterImg ? (
-              <div className="w-full aspect-[4/5] bg-zinc-100 relative overflow-hidden">
+          <div className="w-full rounded-b-3xl overflow-hidden bg-white shadow-xs border-b border-zinc-200/60">
+            {activeCampaigns && activeCampaigns.length > 0 ? (
+              <div className="w-full bg-zinc-100 relative overflow-hidden">
+                {activeCampaigns.map((camp) => {
+                  const url = (camp as any)?.poster_url || (camp as any)?.promo_card_url || camp?.banner_image_url;
+                  if (!url) return null;
+                  const isCurrent = camp.id === activeCampaign?.id;
+                  return (
+                    <img
+                      key={camp.id}
+                      src={url}
+                      alt={(camp as any).title || camp.product_name}
+                      loading="eager"
+                      decoding="sync"
+                      className={`w-full h-auto transition-opacity duration-150 ${
+                        isCurrent
+                          ? 'relative block opacity-100 z-10'
+                          : 'absolute inset-0 opacity-0 pointer-events-none -z-10'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            ) : posterImg ? (
+              <div className="w-full bg-zinc-100 relative overflow-hidden">
                 <img
                   src={posterImg}
                   alt={(activeCampaign as any).title || activeCampaign.product_name}
-                  className="w-full h-full object-cover"
+                  loading="eager"
+                  className="w-full h-auto block"
                 />
               </div>
             ) : null}
@@ -264,18 +375,19 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
             </div>
           </div>
 
-          {/* 2. UPLOAD PURCHASE RECEIPT */}
-          <div className="w-full p-5 rounded-3xl bg-white shadow-xs">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-sm font-bold text-[#141416]">
-                  Upload Purchase Receipt
-                </h2>
-                <p className="text-[11px] text-zinc-500">
-                  Snap or upload receipt photo clearly • Verified by Admin
-                </p>
+          <div className="px-4 space-y-4">
+            {/* 2. UPLOAD PURCHASE RECEIPT */}
+            <div className="w-full p-5 rounded-3xl bg-white shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-sm font-bold text-[#141416]">
+                    Upload Purchase Receipt
+                  </h2>
+                  <p className="text-[11px] text-zinc-500">
+                    Snap or upload receipt photo clearly
+                  </p>
+                </div>
               </div>
-            </div>
 
             {!receiptAttached ? (
               <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-300 bg-[#F6F6F9] flex flex-col items-center justify-center cursor-pointer active:scale-[0.99] transition">
@@ -355,14 +467,14 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                 Receipt Purchase Details
               </h2>
               <p className="text-[11px] text-zinc-500">
-                Enter the amount paid and quantity from your receipt
+                Our product amount only (exclude other groceries on receipt)
               </p>
             </div>
 
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Total Paid on Receipt ($) <span className="text-[#EC008C]">*</span>
+                  Amount Paid for this Item ($) <span className="text-[#EC008C]">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-400">
@@ -474,7 +586,8 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
           >
             Submit Receipt & Claim Reward
           </button>
-        </form>
+        </div>
+      </form>
       )}
     </div>
   );

@@ -119,13 +119,19 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     ? availablePts + pendingPts
     : MOCK_TOTAL_PTS;
 
+  // Authentication phone resolution for Singapore PayNow default proxy
+  const storedAuthPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
+  const cleanDefaultPhone = storedAuthPhone.replace(/\D/g, '').replace(/^65/, '');
+
   // Account fields (Phone Number PK, Nickname, PayNow, Social Usernames, Privacy)
   const [nickname, setNickname] = useState(db.user?.nickname || '');
-  const [paynow, setPaynow] = useState(
-    db.user?.paynow ||
-    (db.user as any)?.paynow_number ||
-    (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_paynow') || '' : '')
-  );
+  const [paynow, setPaynow] = useState(() => {
+    const uPn = db.user?.paynow || (db.user as any)?.paynow_number || '';
+    if (uPn && uPn.length !== 64 && !uPn.startsWith('...')) return uPn;
+    const localPn = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '';
+    if (localPn) return localPn;
+    return cleanDefaultPhone || '';
+  });
   const [privacyMode, setPrivacyMode] = useState<boolean>(() => db.user?.privacy_mode ?? db.user?.privacy?.mode ?? true);
   const [tt, setTt] = useState(db.user?.socials?.tt || '');
   const [fb, setFb] = useState(db.user?.socials?.fb || '');
@@ -146,6 +152,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         const uPn = db.user.paynow || (db.user as any)?.paynow_number || '';
         if (uPn && uPn.length !== 64 && !uPn.startsWith('...')) {
           setPaynow(uPn);
+        } else if (!paynow) {
+          const localPn = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '';
+          setPaynow(localPn || cleanDefaultPhone || '');
         }
         if (db.user.privacy_mode !== undefined) {
           setPrivacyMode(db.user.privacy_mode);
@@ -248,16 +257,20 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       const amt = Number(tx.amount_cashback ?? tx.cashback_amount ?? tx.amount ?? 0);
       const titleLower = (tx.title || tx.description || '').toLowerCase();
 
-      if (titleLower.includes('withdraw') || tx.type === 'withdrawal') {
+      if (
+        (tx.type === 'withdrawal' || (titleLower.includes('withdraw') && !titleLower.includes('fee'))) &&
+        tx.type !== 'withdrawal_fee' &&
+        Math.abs(amt) > 0
+      ) {
         list.push({
           id: `tx-withdraw-${tx.id}`,
           category: 'Withdrawal',
           title: 'PayNow Withdrawal',
-          description: tx.status === 'pending'
+          description: tx.status === 'pending' || tx.status === 'requested'
             ? `Withdrawal request of $${Math.abs(amt).toFixed(2)} is pending Admin review.`
             : `PayNow transfer of $${Math.abs(amt).toFixed(2)} successfully sent.`,
           timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: tx.status === 'pending'
+          badge: tx.status === 'pending' || tx.status === 'requested'
             ? { label: 'Processing', variant: 'amber' }
             : { label: 'Completed', variant: 'emerald' },
           iconType: 'wallet',
@@ -325,10 +338,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [withdrawAmount, setWithdrawAmount] = useState<string>(
     String(db.settings.min_withdrawal_amount)
   );
+  const [showWithdrawConfirmModal, setShowWithdrawConfirmModal] = useState<boolean>(false);
 
   const requireRules = db.settings.require_points_for_withdrawal !== false;
   const minPts = Number(db.settings.min_points_to_unlock_withdrawal ?? 100);
-  const userPts = Number(db.user?.points_balance || 0);
+  const userPts = Math.max(Number(db.user?.points_balance || 0), totalPts, availablePts);
   const ptsSatisfied = userPts >= minPts;
   const ptsPct = Math.min(100, Math.round((userPts / Math.max(1, minPts)) * 100));
 
@@ -370,7 +384,13 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     return `${dd}/${mm}/${yyyy}`;
   };
 
-  const storedAuthPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
+  const formatCompactPoints = (n: number) => {
+    return Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(n);
+  };
+
   const resolvedPhoneLast4 =
     (storedAuthPhone && storedAuthPhone.length >= 4 ? storedAuthPhone.slice(-4) : '') ||
     (db.user?.privacy?.phone && !db.user.privacy.phone.endsWith('0000') ? db.user.privacy.phone.replace(/\D/g, '').slice(-4) : '') ||
@@ -401,14 +421,29 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const handleWithdraw = (e: React.FormEvent) => {
     e.preventDefault();
     const amt = Number(withdrawAmount);
-    requestWithdrawal(amt);
+    if (isNaN(amt) || amt <= 0) {
+      return;
+    }
+    const resolvedPaynow = paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
+    if (!resolvedPaynow) {
+      updateAccountProfile({ paynow: cleanDefaultPhone });
+    }
+    // Open explicit confirmation modal (includes privacy consent & point charges preview)
+    setShowWithdrawConfirmModal(true);
+  };
+
+  const handleConfirmWithdrawSubmit = () => {
+    setShowWithdrawConfirmModal(false);
+    const amt = Number(withdrawAmount);
+    const resolvedPaynow = paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
+    requestWithdrawal(amt, resolvedPaynow);
 
     // Record withdrawal request activity
     saveCustomActivity({
       id: `act-withdraw-${Date.now()}`,
       category: 'Withdrawal',
       title: 'PayNow Withdrawal Submitted',
-      description: `Requested $${amt.toFixed(2)} transfer to PayNow ${db.user?.paynow || paynow}.`,
+      description: `Requested ${amt.toFixed(2)} transfer to PayNow ${resolvedPaynow}.`,
       timestamp: Date.now(),
       badge: { label: 'Processing', variant: 'amber' },
       iconType: 'wallet',
@@ -550,12 +585,12 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               <span>Reward Points</span>
               <span className="opacity-60 group-hover:opacity-100">→</span>
             </div>
-            <div className="text-3xl font-extrabold text-white tracking-tight mt-0.5">
-              {totalPts}{' '}
+            <div className="text-3xl font-extrabold text-white tracking-tight mt-0.5 whitespace-nowrap">
+              {formatCompactPoints(totalPts)}{' '}
               <span className="text-xs font-bold text-[#FFEA00]">pts</span>
             </div>
             <div className="text-[11px] text-zinc-300 font-medium mt-1">
-              Available to use: <strong className="text-white font-bold">{availablePts} pts</strong>
+              Available to use: <strong className="text-white font-bold">{formatCompactPoints(availablePts)} pts</strong>
             </div>
           </button>
         </div>
@@ -704,9 +739,16 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   Withdraw
                 </button>
               </div>
-              <p className="text-[11px] text-zinc-500">
-                Manual transfer by Admin within {db.settings.withdrawal_sla_text} (min ${db.settings.min_withdrawal_amount}).
-              </p>
+              <div className="flex items-center justify-between text-[11px] text-zinc-500 px-1">
+                <span>PayNow: <strong className="text-zinc-800 font-semibold">{paynow || cleanDefaultPhone || 'Mobile Number'}</strong></span>
+                {Number(db.settings.withdrawal_points_fee ?? 0) > 0 ? (
+                  <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/80 text-[10px]">
+                    Fee: {db.settings.withdrawal_points_fee} pts
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-zinc-400">Within {db.settings.withdrawal_sla_text}</span>
+                )}
+              </div>
             </div>
           )}
         </form>
@@ -987,6 +1029,102 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               No achievements available.
             </div>
           )}
+        </div>
+      )}
+      {/* PAYNOW WITHDRAWAL CONFIRMATION POPUP MODAL */}
+      {showWithdrawConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-zinc-100 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[#EC008C]/10 flex items-center justify-center text-[#EC008C]">
+                  <Receipt className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-bold text-zinc-900">
+                  Confirm PayNow Withdrawal
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWithdrawConfirmModal(false)}
+                className="w-7 h-7 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Payout Breakdown Card */}
+            <div className="bg-[#F8F9FA] rounded-2xl p-4 border border-slate-100 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500 font-medium">Cash Withdrawal</span>
+                <span className="text-base font-black text-zinc-900">
+                  ${Number(withdrawAmount || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500 font-medium">PayNow Destination</span>
+                <span className="font-mono font-bold text-zinc-800">
+                  {(paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '')}
+                </span>
+              </div>
+              {Number(db.settings.withdrawal_points_fee ?? 0) > 0 && (
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                  <span className="text-zinc-500 font-medium">Processing Fee</span>
+                  <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full text-[11px] border border-amber-200/60">
+                    -${db.settings.withdrawal_points_fee} pts
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                <span className="text-zinc-500 font-medium">Transfer SLA</span>
+                <span className="font-semibold text-zinc-700">
+                  Within {db.settings.withdrawal_sla_text}
+                </span>
+              </div>
+            </div>
+
+            {/* PRIVACY MODE EXTRA TEXT VS STANDARD CONFIRMATION */}
+            {(privacyMode ?? db.user?.privacy_mode ?? db.user?.privacy?.mode ?? true) ? (
+              <div className="p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Privacy Mode</span>
+                </div>
+                <p className="text-[11px] text-emerald-800 font-medium leading-normal">
+                  You authorize HSG+ to view your PayNow number (<strong>{(paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '')}</strong>) to send this payout.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-zinc-900">
+                  <CheckCircle2 className="w-4 h-4 text-zinc-600 shrink-0" />
+                  <span>Confirm PayNow</span>
+                </div>
+                <p className="text-[11px] text-zinc-600 font-medium leading-normal">
+                  Payout will be transferred to <strong>{(paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '')}</strong>.
+                </p>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowWithdrawConfirmModal(false)}
+                className="flex-1 h-11 rounded-full border border-zinc-200 bg-white hover:bg-zinc-50 font-bold text-xs text-zinc-700 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmWithdrawSubmit}
+                className="flex-1 h-11 rounded-full bg-[#EC008C] hover:bg-[#d6007e] text-white font-bold text-xs shadow-md transition active:scale-95 cursor-pointer"
+              >
+                Confirm & Withdraw
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -7,7 +7,6 @@ import {
   Home,
   ReceiptText,
   ShoppingBag,
-  Smartphone,
   User,
   X,
 } from 'lucide-react';
@@ -159,8 +158,6 @@ const HsgMobileShell: React.FC = () => {
   const [isDesktopViewport, setIsDesktopViewport] = useState<boolean>(
     () => window.innerWidth > 768
   );
-  const [bypassDesktopBlocker, setBypassDesktopBlocker] =
-    useState<boolean>(false);
 
   // Streak Popup State:
   // 1st click -> shows Streak Detail + Congrats Animation
@@ -335,8 +332,8 @@ const HsgMobileShell: React.FC = () => {
       ? window.location.origin
       : 'https://hsgplus.community';
 
-  // DESKTOP QR BLOCKER FOR MOBILE APP
-  if (isDesktopViewport && !bypassDesktopBlocker) {
+  // DESKTOP QR BLOCKER FOR MOBILE APP (STRICT MOBILE ONLY)
+  if (isDesktopViewport) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-hsg-app-canvas text-[#141416] px-6 text-center select-none">
         <HsgLogo size="lg" darkText />
@@ -349,17 +346,6 @@ const HsgMobileShell: React.FC = () => {
 
         <div className="bg-white p-6 mt-6 rounded-3xl shadow-md">
           <QRCodeSVG value={currentUrl} size={190} />
-        </div>
-
-        <div className="mt-6 flex items-center justify-center">
-          <button
-            type="button"
-            onClick={() => setBypassDesktopBlocker(true)}
-            className="h-11 px-6 rounded-full bg-[#141416] text-white font-semibold text-xs flex items-center gap-2 shadow-sm hover:opacity-90"
-          >
-            <Smartphone className="w-4 h-4 text-[#FFEA00]" />
-            Preview Mobile App on Desktop
-          </button>
         </div>
       </div>
     );

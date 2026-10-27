@@ -20,6 +20,7 @@ const INITIAL_DATABASE: HsgDatabaseSchema = {
     min_invites_to_unlock_withdrawal: 3,
     min_events_to_unlock_withdrawal: 3,
     withdrawal_rules_updated_at: Date.now(),
+    withdrawal_points_fee: 100,
     withdrawal_sla_text: '24 hours',
     delivery_fee: 10,
     whatsapp_bot_number: '6584755948',
@@ -73,6 +74,7 @@ interface SubmitCashbackPayload {
 interface HsgDataContextValue {
   db: HsgDatabaseSchema;
   activeCampaign: CashbackCampaign | null;
+  activeCampaigns: CashbackCampaign[];
   setActiveCampaignId: (campaignId: string | null) => void;
   isAuthenticated: boolean;
   showLoginModal: boolean;
@@ -104,7 +106,7 @@ interface HsgDataContextValue {
   adminSaveAnnouncement: (ann: HsgAnnouncement) => void;
   adminDeleteAnnouncement: (id: string) => void;
   adminUpdateSettings: (settings: Partial<HsgSystemSettings>) => void;
-  requestWithdrawal: (amount: number) => { ok: boolean; message: string };
+  requestWithdrawal: (amount: number, overridePaynow?: string) => { ok: boolean; message: string };
   redeemMerch: (
     merchId: string,
     fulfillment: 'collect' | 'delivery',
@@ -222,12 +224,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         const data = await res.json();
         if (Array.isArray(data.campaigns)) {
           const liveCamps = data.campaigns;
-          const liveActive =
-            liveCamps.find((c: any) => c.is_active && !c.is_archived) || null;
+          const liveActiveList = liveCamps
+            .filter((c: any) => c.is_active && !c.is_archived)
+            .sort((a: any, b: any) => (Number(a.display_order) || 1) - (Number(b.display_order) || 1));
           setDb((prev) => ({
             ...prev,
             cashback_campaigns: liveCamps,
-            active_campaign_id: liveActive ? liveActive.id : null,
+            active_campaign_id:
+              prev.active_campaign_id && liveActiveList.some((c: any) => c.id === prev.active_campaign_id)
+                ? prev.active_campaign_id
+                : (liveActiveList[0] ? liveActiveList[0].id : null),
           }));
         }
       }
@@ -368,6 +374,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                 stData.settings.withdrawal_rules_updated_at ||
                   prev.settings.withdrawal_rules_updated_at ||
                   Date.now()
+              ),
+              withdrawal_points_fee: Number(
+                stData.settings.withdrawal_points_fee ?? prev.settings.withdrawal_points_fee ?? 0
               ),
               withdrawal_sla_text:
                 stData.settings.withdrawal_sla_text || prev.settings.withdrawal_sla_text,
@@ -688,23 +697,26 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }, 3200);
   };
 
-  const activeCampaign = db.active_campaign_id
-    ? db.cashback_campaigns.find((c) => c.id === db.active_campaign_id) || null
-    : null;
+  const activeCampaigns = React.useMemo(() => {
+    return db.cashback_campaigns
+      .filter((c) => c.is_active && !c.is_archived)
+      .sort((a, b) => (Number(a.display_order) || 1) - (Number(b.display_order) || 1))
+      .slice(0, 4);
+  }, [db.cashback_campaigns]);
+
+  const activeCampaign = React.useMemo(() => {
+    if (db.active_campaign_id) {
+      const found = activeCampaigns.find((c) => c.id === db.active_campaign_id);
+      if (found) return found;
+    }
+    return activeCampaigns[0] || null;
+  }, [activeCampaigns, db.active_campaign_id]);
 
   const setActiveCampaignId = (campaignId: string | null) => {
     setDb((prev) => ({
       ...prev,
       active_campaign_id: campaignId,
     }));
-    if (!campaignId) {
-      showToast('Cashback Campaign Closed ("Stay tuned" active)');
-    } else {
-      const found = db.cashback_campaigns.find((c) => c.id === campaignId);
-      if (found) {
-        showToast(`Active Cashback set to: ${found.product_name}`);
-      }
-    }
   };
 
   const loginWithWhatsApp = async (
@@ -1195,9 +1207,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast('System settings updated');
   };
 
-  const requestWithdrawal = (amount: number) => {
+  const requestWithdrawal = (amount: number, overridePaynow?: string) => {
     if (!isAuthenticated) {
-      requireAuth(() => requestWithdrawal(amount));
+      requireAuth(() => requestWithdrawal(amount, overridePaynow));
       return { ok: false, message: 'Please sign in with WhatsApp first.' };
     }
     if (!db.user) return { ok: false, message: 'Please log in first.' };
@@ -1254,7 +1266,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     if (amount < db.settings.min_withdrawal_amount) {
-      const msg = `Minimum withdrawal is $${db.settings.min_withdrawal_amount.toFixed(2)}.`;
+      const msg = `Minimum withdrawal is ${db.settings.min_withdrawal_amount.toFixed(2)}.`;
       showToast(msg);
       return { ok: false, message: msg };
     }
@@ -1262,21 +1274,46 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       const pendingAmt = Number(db.user.pending_balance || 0);
       const msg =
         pendingAmt > 0
-          ? `Insufficient available balance ($${db.user.wallet_balance.toFixed(2)}). You have $${pendingAmt.toFixed(2)} pending admin receipt verification.`
+          ? `Insufficient available balance (${db.user.wallet_balance.toFixed(2)}). You have ${pendingAmt.toFixed(2)} pending admin receipt verification.`
           : 'Insufficient cashback balance.';
       showToast(msg);
       return { ok: false, message: msg };
     }
-    if (!db.user.paynow.trim()) {
+
+    const pointsFee = Number(db.settings.withdrawal_points_fee ?? 0);
+    const userPtsBal = Number(db.user.points_balance || 0);
+    if (pointsFee > 0 && userPtsBal < pointsFee) {
+      const msg = `Need ${pointsFee} pts to cover withdrawal processing fee (you have ${userPtsBal} pts).`;
+      showToast(msg);
+      return { ok: false, message: msg };
+    }
+
+    const storedAuthPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
+    const cleanPhone = (storedAuthPhone || db.user.phone_number || '').replace(/\D/g, '').replace(/^65/, '');
+    const localPaynow = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '').trim() : '';
+
+    let effectivePaynow = (overridePaynow?.trim()) || localPaynow || '';
+    if (!effectivePaynow && db.user.paynow && !db.user.paynow.startsWith('...') && db.user.paynow.length !== 64) {
+      effectivePaynow = db.user.paynow.trim();
+    }
+    if (!effectivePaynow) {
+      effectivePaynow = cleanPhone;
+    }
+
+    if (!effectivePaynow) {
       const msg = 'Please set your PayNow number in Account details.';
       showToast(msg);
       return { ok: false, message: msg };
     }
 
+    try {
+      localStorage.setItem('hsg_auth_paynow', effectivePaynow);
+    } catch {}
+
     const withdrawalRecord: CashbackHistoryItem = {
       id: 'WD-' + Math.floor(10000 + Math.random() * 90000),
       type: 'withdrawal',
-      title: `PayNow Withdrawal (${db.user.paynow}) — Manual Transfer within ${db.settings.withdrawal_sla_text}`,
+      title: `PayNow Withdrawal (${effectivePaynow}) — Manual Transfer within ${db.settings.withdrawal_sla_text}`,
       amount: -Number(amount.toFixed(2)),
       status: 'pending_payout',
       timestamp: Date.now(),
@@ -1289,7 +1326,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         user_id: db.user.id || (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '',
         user_phone: db.user.phone_number,
         user_nickname: db.user.nickname,
-        paynow_number: db.user.paynow,
+        paynow_number: effectivePaynow,
         amount: Number(amount.toFixed(2)),
       }),
     }).catch((err) => console.warn('[LiveCashback] Withdrawal error:', err));
@@ -1299,13 +1336,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       user: prev.user
         ? {
             ...prev.user,
+            paynow: effectivePaynow,
+            paynow_number: effectivePaynow,
             wallet_balance: Number((prev.user.wallet_balance - amount).toFixed(2)),
+            points_balance: pointsFee > 0 ? Math.max(0, (prev.user.points_balance || 0) - pointsFee) : prev.user.points_balance,
           }
         : null,
       history: [withdrawalRecord, ...prev.history],
     }));
 
-    const msg = `Withdrawal of $${amount.toFixed(2)} submitted. Admin transfers within ${db.settings.withdrawal_sla_text}.`;
+    const msg = `Withdrawal of ${amount.toFixed(2)} submitted. Admin transfers within ${db.settings.withdrawal_sla_text}.`;
     showToast(msg);
     return { ok: true, message: msg };
   };
@@ -1982,6 +2022,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         db,
         activeCampaign,
+        activeCampaigns,
         setActiveCampaignId,
         isAuthenticated,
         showLoginModal,

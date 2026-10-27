@@ -61,6 +61,7 @@ export interface CashbackCampaign {
   id: string;
   is_active: boolean;
   is_archived?: boolean;
+  display_order?: number;
   campaign_name?: string;
   display_title?: string;
   display_description?: string;
@@ -384,6 +385,7 @@ export interface HsgSystemSettings {
   min_invites_to_unlock_withdrawal?: number;
   min_events_to_unlock_withdrawal?: number;
   withdrawal_rules_updated_at?: number;
+  withdrawal_points_fee?: number;
   withdrawal_sla_text: string;
   delivery_fee: number;
   whatsapp_bot_number: string;

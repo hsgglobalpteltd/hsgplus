@@ -29,9 +29,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
   const MOCK_USER_CASH = 55.0;
   const MOCK_USER_PTS = 1980;
 
-  const [categoryFilter, setCategoryFilter] = useState<
-    'All' | 'Product' | 'Merch'
-  >('All');
+  const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [step, setStep] = useState<'shop' | 'checkout' | 'done'>('shop');
   const [cart, setCart] = useState<Record<string, CartEntry>>({});
   const [fulfillment, setFulfillment] = useState<'collect' | 'delivery'>(
@@ -53,11 +51,20 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
   const pickupAddress =
     db.settings.self_collect_address || 'HSG Global HQ, Singapore';
 
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    db.merch_catalog.forEach((item) => {
+      const c = (item.category || '').trim();
+      if (c) set.add(c);
+    });
+    return ['All', ...Array.from(set)];
+  }, [db.merch_catalog]);
+
   const filteredCatalog = useMemo(() => {
     return db.merch_catalog.filter((item) => {
       if (categoryFilter === 'All') return true;
-      const cat = item.category === 'Merch' ? 'Merch' : 'Product';
-      return cat === categoryFilter;
+      const c = (item.category || '').trim();
+      return c.toLowerCase() === categoryFilter.toLowerCase();
     });
   }, [db.merch_catalog, categoryFilter]);
 
@@ -304,7 +311,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
         <>
           {/* CATEGORY FILTER PILLS */}
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-            {(['All', 'Product', 'Merch'] as const).map((cat) => {
+            {categories.map((cat) => {
               const active = categoryFilter === cat;
               return (
                 <button
@@ -317,11 +324,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
                       : 'bg-white text-zinc-600'
                   }`}
                 >
-                  {cat === 'All'
-                    ? 'All Items'
-                    : cat === 'Merch'
-                    ? 'Product • Merch'
-                    : 'Products'}
+                  {cat === 'All' ? 'All Items' : cat}
                 </button>
               );
             })}
@@ -339,7 +342,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
                 const ptsPrice = Number(
                   item.price_points ?? Math.round(item.price * 10)
                 );
-                const cat = item.category || 'Product';
+                const cat = item.category?.trim() || 'Item';
                 const inCart = cart[item.id];
 
                 return (
@@ -365,7 +368,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
                           </div>
                         )}
                         <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-white/90 text-[#141416] text-[9px] font-bold">
-                          {cat === 'Merch' ? 'Merch' : 'Product'}
+                          {cat}
                         </span>
                       </div>
 
