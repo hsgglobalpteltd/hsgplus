@@ -7,6 +7,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
+import { compressImageFile } from '../lib/imageCompressor';
 
 const LIVE_WORKER_URL = 'https://ib-v2.hsgglobalpteltd.workers.dev';
 
@@ -120,14 +121,15 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
     setIsUploading(true);
 
     try {
-      const cleanName = chosenName.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const toUpload = await compressImageFile(file, { maxDimension: 1280, quality: 0.8 });
+      const cleanName = (toUpload.name || chosenName).replace(/[^a-zA-Z0-9.-]/g, '_');
       const uploadPath = `receipts/${Date.now()}_${cleanName}`;
       const res = await fetch(
         `${LIVE_WORKER_URL}/api/upload?filename=${encodeURIComponent(uploadPath)}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': file.type || 'application/octet-stream' },
-          body: file,
+          headers: { 'Content-Type': toUpload.type || 'image/jpeg' },
+          body: toUpload,
         }
       );
 

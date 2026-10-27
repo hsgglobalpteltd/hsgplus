@@ -29,6 +29,8 @@ interface EventsPageProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   isVenueScan?: boolean;
   onClearVenueScan?: () => void;
+  onBackToSource?: () => void;
+  backLabel?: string;
 }
 
 export const EventsPage: React.FC<EventsPageProps> = ({
@@ -37,6 +39,8 @@ export const EventsPage: React.FC<EventsPageProps> = ({
   scrollContainerRef,
   isVenueScan = false,
   onClearVenueScan,
+  onBackToSource,
+  backLabel,
 }) => {
   const { db, isAuthenticated, openLoginModal, rsvpEvent, checkInEvent, showToast } = useHsgData();
   const upcomingAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -424,14 +428,22 @@ export const EventsPage: React.FC<EventsPageProps> = ({
             onClick={() => {
               stopCameraScan();
               setShowCheckInModal(false);
-              onSelectEvent(null);
+              if (onBackToSource) {
+                onBackToSource();
+              } else {
+                onSelectEvent(null);
+              }
             }}
-            className="h-9 px-3.5 rounded-full bg-white text-[#141416] text-xs font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            className="h-9 px-3.5 rounded-full bg-white text-[#141416] text-xs font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition"
           >
-            <ArrowLeft className="w-4 h-4" /> All Events
+            <ArrowLeft className="w-4 h-4" /> {backLabel ? `Back to ${backLabel}` : 'All Events'}
           </button>
           <span className="text-xs font-bold text-[#141416]">
-            {activeEvent.category} • {activeEvent.distance_or_format}
+            {activeEvent.distance_or_format &&
+            activeEvent.distance_or_format.trim().toLowerCase() !==
+              activeEvent.category.trim().toLowerCase()
+              ? `${activeEvent.category} • ${activeEvent.distance_or_format}`
+              : activeEvent.category}
           </span>
         </div>
 
@@ -475,12 +487,11 @@ export const EventsPage: React.FC<EventsPageProps> = ({
             </h1>
 
             {/* Brands Involved */}
-            <div className="mt-2 text-xs font-semibold text-[#141416]">
-              Brands Involved:{' '}
-              <span className="text-[#EC008C]">
+            {activeEvent.brands_involved && activeEvent.brands_involved.length > 0 && (
+              <div className="mt-1.5 text-xs font-semibold text-[#EC008C]">
                 {activeEvent.brands_involved.join(' • ')}
-              </span>
-            </div>
+              </div>
+            )}
 
             <div className="mt-3 space-y-1.5 text-xs text-zinc-600">
               <div className="flex items-center gap-2">
@@ -571,10 +582,13 @@ export const EventsPage: React.FC<EventsPageProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => onSelectEvent(null)}
+                  onClick={() => {
+                    if (onBackToSource) onBackToSource();
+                    else onSelectEvent(null);
+                  }}
                   className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
                 >
-                  Back to All Events
+                  {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                 </button>
               </div>
             ) : isCheckedIn ? (
@@ -596,10 +610,13 @@ export const EventsPage: React.FC<EventsPageProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => onSelectEvent(null)}
+                  onClick={() => {
+                    if (onBackToSource) onBackToSource();
+                    else onSelectEvent(null);
+                  }}
                   className="w-full h-11 rounded-full bg-[#141416] text-white font-bold text-xs active:scale-95 transition cursor-pointer"
                 >
-                  Back to All Events
+                  {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                 </button>
               </div>
             ) : isJoined ? (
@@ -635,6 +652,16 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     <span>Check-In</span>
                   </button>
                 </div>
+
+                {onBackToSource && backLabel && (
+                  <button
+                    type="button"
+                    onClick={onBackToSource}
+                    className="w-full h-11 rounded-full bg-[#141416] text-[#FFEA00] font-bold text-xs active:scale-95 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <span>Return to {backLabel} &rarr;</span>
+                  </button>
+                )}
 
                 {!isCheckInOpen && (
                   <p className="text-[11px] text-zinc-500 text-center">
@@ -676,7 +703,10 @@ export const EventsPage: React.FC<EventsPageProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => onSelectEvent(null)}
+                    onClick={() => {
+                      if (onBackToSource) onBackToSource();
+                      else onSelectEvent(null);
+                    }}
                     className="h-11 rounded-full font-bold text-xs bg-[#F6F6F9] text-zinc-700 hover:bg-zinc-200 active:scale-95 transition cursor-pointer"
                   >
                     Skip
@@ -1213,50 +1243,42 @@ export const EventsPage: React.FC<EventsPageProps> = ({
             {todayEvents.map((ev) => (
               <div
                 key={ev.id}
-                className="w-full rounded-3xl bg-hsg-promo-card text-[#141416] p-4 shadow-sm"
+                onClick={() => onSelectEvent(ev.id)}
+                className="w-full rounded-3xl bg-hsg-promo-card text-[#141416] overflow-hidden shadow-sm cursor-pointer group transition active:scale-[0.99]"
               >
-                <div
-                  onClick={() => onSelectEvent(ev.id)}
-                  className="w-full flex items-center gap-3.5 cursor-pointer"
-                >
+                {/* Full-width Image Thumbnail */}
+                <div className="relative w-full h-44 bg-black/10 overflow-hidden">
                   <img
                     src={ev.image_url}
                     alt={ev.title}
-                    className="w-16 h-16 rounded-2xl object-cover shrink-0 bg-black/10"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-extrabold text-[#EC008C]">
-                      TODAY • {ev.category} • {ev.time_label}
-                    </div>
-                    <h3 className="text-sm font-extrabold text-[#141416] truncate mt-0.5">
-                      {ev.title}
-                    </h3>
-                    <div className="text-[11px] font-bold text-[#141416] truncate mt-0.5">
-                      Brands: {ev.brands_involved.join(' • ')}
-                    </div>
-                    <div className="text-xs text-black/75 truncate">
-                      {ev.location}
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-[#141416] shrink-0" />
-                </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
 
-                <div className="w-full mt-3 pt-3 border-t border-black/10 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold text-black/80 truncate">
-                    {Number(ev.fee_amount || 0) > 0
-                      ? `$${Number(ev.fee_amount).toFixed(2)} Fee`
-                      : 'Free Entry'}
-                  </span>
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* Top-Left Category & Time Pill */}
+                  <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-[#141416] text-[#FFEA00] shadow-xs">
+                      TODAY
+                    </span>
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-black/60 backdrop-blur-md text-white border border-white/10 shadow-xs">
+                      {ev.category}
+                    </span>
+                  </div>
+
+                  {/* Top-Right Join Button */}
+                  <div className="absolute top-3 right-3 z-10">
                     <button
                       type="button"
-                      onClick={() => onSelectEvent(ev.id)}
-                      className={`h-8 px-4 rounded-full text-xs font-bold transition shadow-xs cursor-pointer ${
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectEvent(ev.id);
+                      }}
+                      className={`h-8 px-4 rounded-full text-xs font-bold transition shadow-lg cursor-pointer ${
                         ev.user_status === 'checked_in' || ev.user_status === 'joined'
                           ? 'bg-[#141416] text-[#FFEA00]'
                           : (ev.joined_count || 0) >= ev.max_capacity
-                          ? 'bg-black/20 text-black/50 cursor-not-allowed'
-                          : 'bg-[#EC008C] text-white'
+                          ? 'bg-black/60 backdrop-blur-md text-black/50 cursor-not-allowed'
+                          : 'bg-[#EC008C] text-white hover:bg-[#d6007e]'
                       }`}
                     >
                       {ev.user_status === 'checked_in' || ev.user_status === 'joined'
@@ -1264,9 +1286,44 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                         : (ev.joined_count || 0) >= ev.max_capacity
                         ? 'Event Full'
                         : Number(ev.fee_amount || 0) > 0
-                        ? `Join with $${Number(ev.fee_amount).toFixed(2)}`
+                        ? `Join • $${Number(ev.fee_amount).toFixed(2)}`
                         : 'Join'}
                     </button>
+                  </div>
+                </div>
+
+                {/* Title and Details Below */}
+                <div className="p-4 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-[#141416]">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {ev.time_label}
+                    </span>
+                    <span className="text-black/80">
+                      {Number(ev.fee_amount || 0) > 0
+                        ? `$${Number(ev.fee_amount).toFixed(2)} Fee`
+                        : 'Free Entry'}
+                    </span>
+                  </div>
+
+                  <h3 className="text-base font-extrabold text-[#141416] leading-snug">
+                    {ev.title}
+                  </h3>
+
+                  {ev.brands_involved && ev.brands_involved.length > 0 && (
+                    <div className="text-[11px] font-bold text-[#141416]/90 truncate">
+                      {ev.brands_involved.join(' • ')}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs text-black/80 pt-1 border-t border-black/10">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <MapPin className="w-3.5 h-3.5 shrink-0 text-black/70" />
+                      <span className="truncate">{ev.location}</span>
+                    </div>
+                    <span className="shrink-0 text-[11px] font-semibold text-black/80">
+                      {ev.joined_count}/{ev.max_capacity} joined
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1301,53 +1358,43 @@ export const EventsPage: React.FC<EventsPageProps> = ({
               {upcomingEvents.map((ev) => (
                 <div
                   key={ev.id}
-                  className="w-full rounded-3xl bg-[#141416] text-white p-4 shadow-sm"
+                  onClick={() => onSelectEvent(ev.id)}
+                  className="w-full rounded-3xl bg-[#141416] text-white overflow-hidden shadow-sm cursor-pointer group transition active:scale-[0.99]"
                 >
-                  <div
-                    onClick={() => onSelectEvent(ev.id)}
-                    className="w-full flex items-center gap-3.5 cursor-pointer"
-                  >
+                  {/* Full-width Image Thumbnail */}
+                  <div className="relative w-full h-44 bg-zinc-900 overflow-hidden">
                     <img
                       src={ev.image_url}
                       alt={ev.title}
-                      className="w-16 h-16 rounded-2xl object-cover shrink-0 bg-zinc-800"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[11px] font-semibold text-[#FFEA00] flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        <span>
-                          {formatDate(ev.date_timestamp)} • {ev.category}
-                        </span>
-                      </div>
-                      <h2 className="text-sm font-bold text-white truncate mt-0.5">
-                        {ev.title}
-                      </h2>
-                      <div className="text-[11px] font-semibold text-[#EC008C] truncate mt-0.5">
-                        Brands: {ev.brands_involved.join(' • ')}
-                      </div>
-                      <div className="text-xs text-zinc-400 truncate">
-                        {ev.location} • {ev.joined_count}/{ev.max_capacity} joined
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-zinc-400 shrink-0" />
-                  </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
 
-                  <div className="w-full mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-zinc-300 truncate">
-                      {Number(ev.fee_amount || 0) > 0
-                        ? `$${Number(ev.fee_amount).toFixed(2)} Fee`
-                        : 'Free Entry'}
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* Top-Left Date & Category Pill */}
+                    <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-black/70 backdrop-blur-md text-[#FFEA00] border border-white/10 flex items-center gap-1 shadow-xs">
+                        <Calendar className="w-3 h-3" />
+                        {formatDate(ev.date_timestamp)}
+                      </span>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-black/70 backdrop-blur-md text-white border border-white/10 shadow-xs">
+                        {ev.category}
+                      </span>
+                    </div>
+
+                    {/* Top-Right Join Button */}
+                    <div className="absolute top-3 right-3 z-10">
                       <button
                         type="button"
-                        onClick={() => onSelectEvent(ev.id)}
-                        className={`h-8 px-4 rounded-full text-xs font-bold transition shadow-xs cursor-pointer ${
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectEvent(ev.id);
+                        }}
+                        className={`h-8 px-4 rounded-full text-xs font-bold transition shadow-lg cursor-pointer ${
                           ev.user_status === 'checked_in' || ev.user_status === 'joined'
                             ? 'bg-[#FFEA00] text-[#141416]'
                             : (ev.joined_count || 0) >= ev.max_capacity
-                            ? 'bg-white/20 text-zinc-400 cursor-not-allowed'
-                            : 'bg-[#EC008C] text-white'
+                            ? 'bg-black/70 backdrop-blur-md text-zinc-400 cursor-not-allowed'
+                            : 'bg-[#EC008C] text-white hover:bg-[#d6007e]'
                         }`}
                       >
                         {ev.user_status === 'checked_in' || ev.user_status === 'joined'
@@ -1355,9 +1402,44 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                           : (ev.joined_count || 0) >= ev.max_capacity
                           ? 'Event Full'
                           : Number(ev.fee_amount || 0) > 0
-                          ? `Join with $${Number(ev.fee_amount).toFixed(2)}`
+                          ? `Join • $${Number(ev.fee_amount).toFixed(2)}`
                           : 'Join'}
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Title and Details Below */}
+                  <div className="p-4 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-[#FFEA00] flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {ev.time_label}
+                      </span>
+                      <span className="text-zinc-300 font-medium">
+                        {Number(ev.fee_amount || 0) > 0
+                          ? `$${Number(ev.fee_amount).toFixed(2)} Fee`
+                          : 'Free Entry'}
+                      </span>
+                    </div>
+
+                    <h2 className="text-base font-bold text-white leading-snug">
+                      {ev.title}
+                    </h2>
+
+                    {ev.brands_involved && ev.brands_involved.length > 0 && (
+                      <div className="text-[11px] font-semibold text-[#EC008C] truncate">
+                        {ev.brands_involved.join(' • ')}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs text-zinc-400 pt-1 border-t border-white/10">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                        <span className="truncate">{ev.location}</span>
+                      </div>
+                      <span className="shrink-0 text-[11px] text-zinc-400">
+                        {ev.joined_count}/{ev.max_capacity} joined
+                      </span>
                     </div>
                   </div>
                 </div>

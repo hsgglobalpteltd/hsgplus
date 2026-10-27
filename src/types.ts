@@ -135,6 +135,7 @@ export interface UserAccount {
   privacy?: UserPrivacy;
   pending_balance?: number;
   points_balance?: number;
+  cashback_balance?: number;
   pending_points?: number;
   address?: string;
   weekly_streak: number; // Week streak counter shown at top-right profile icon
@@ -260,6 +261,46 @@ export interface ContestPrizeTier {
   amount: string;
 }
 
+export interface ContestPrizeItem {
+  id: string;
+  title: string;
+  description?: string;
+  photo_url?: string;
+  reward_type: 'point' | 'cashback' | 'both';
+  reward_cash?: number;
+  reward_points?: number;
+  product_id?: string;
+  product_name?: string;
+  product_image?: string;
+  max_pax: number;
+}
+
+export interface ContestWinnerRecord {
+  id: string;
+  contest_id: string;
+  prize_id: string;
+  prize_title: string;
+  prize_description?: string;
+  prize_photo_url?: string;
+  reward_type: 'point' | 'cashback' | 'both';
+  reward_cash?: number;
+  reward_points?: number;
+  product_id?: string;
+  product_name?: string;
+  product_image?: string;
+  delivery_address?: string;
+  claim_channel?: string;
+  awaiting_address?: boolean;
+  user_id: string;
+  user_phone: string;
+  user_nickname: string;
+  submission_id?: string;
+  status: 'pending_claim' | 'claimed';
+  claimed: boolean;
+  claimed_at?: number;
+  created_at: number;
+}
+
 export interface ContestQuestionItem {
   id: string;
   label: string;
@@ -279,11 +320,32 @@ export interface ContestQuestionItem {
 export interface HsgContest {
   id: string;
   title: string;
+  internal_title?: string;
+  frontpage_title?: string;
+  frontpage_description?: string;
+  frontpage_poster_url?: string;
   start_timestamp?: number;
   end_timestamp: number;
   is_published?: boolean;
   is_archived?: boolean;
+  required_event_id?: string | null;
+  requirement_note?: string;
   poster_images?: string[];
+  inside_posters?: string[];
+  inside_description?: string;
+  inside_instruction?: string;
+  reward_points?: number;
+  max_per_user?: number;
+  max_total?: number;
+  extra_questions?: Array<{
+    id: string;
+    question: string;
+    type?: 'text' | 'radio';
+    options?: string[];
+    required?: boolean;
+  }>;
+  prizes?: ContestPrizeItem[];
+  winners_announced?: boolean;
   frontpage_config?: {
     title?: string;
     description?: string;
@@ -316,12 +378,17 @@ export interface ContestSubmissionRecord {
   id: string;
   contest_id: string;
   contest_title: string;
+  user_id?: string;
   user_phone: string;
   user_nickname: string;
-  photo_name: string;
+  photo_name?: string;
+  receipt_photo_url?: string;
+  amount_paid?: number;
+  items_count?: number;
+  extra_answers?: Record<string, any>;
   answer_json?: Record<string, any>;
-  answers_json: Record<string, any>;
-  status: 'submitted' | 'winner' | 'rejected';
+  answers_json?: Record<string, any>;
+  status: 'submitted' | 'approved' | 'winner' | 'rejected';
   winner_data?: {
     is_winner?: boolean;
     prize_note?: string;
@@ -329,7 +396,7 @@ export interface ContestSubmissionRecord {
   };
   prize_awarded?: string;
   created_at?: number;
-  timestamp: number;
+  timestamp?: number;
 }
 
 export interface ContestReward {
@@ -414,6 +481,7 @@ export interface HsgDatabaseSchema {
   events: HsgEvent[];
   contests: HsgContest[];
   contest_submissions: ContestSubmissionRecord[];
+  contest_winners: ContestWinnerRecord[];
   rewards: ContestReward[];
   announcements: HsgAnnouncement[];
   highlights: PostHighlight[];

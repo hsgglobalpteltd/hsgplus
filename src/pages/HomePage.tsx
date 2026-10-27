@@ -202,11 +202,19 @@ export const HomePage: React.FC<HomePageProps> = ({
 
           <div className="w-full space-y-3.5">
             {db.contests.map((contest) => {
-              const fpTitle = contest.frontpage_config?.title || contest.title;
+              const fpTitle =
+                contest.frontpage_title ||
+                contest.frontpage_config?.title ||
+                contest.title;
               const fpDesc =
-                contest.frontpage_config?.description || contest.subtitle || '';
+                contest.frontpage_description ||
+                contest.frontpage_config?.description ||
+                (contest as any).subtitle ||
+                '';
               const fpPhoto =
+                contest.frontpage_poster_url ||
                 contest.frontpage_config?.cover_photo_url ||
+                (Array.isArray(contest.inside_posters) && contest.inside_posters[0]) ||
                 (Array.isArray(contest.poster_images) && contest.poster_images[0]) ||
                 '';
               const countdownText = formatCountdown(
@@ -222,11 +230,11 @@ export const HomePage: React.FC<HomePageProps> = ({
                   className="w-full rounded-3xl bg-white overflow-hidden shadow-xs cursor-pointer active:scale-[0.99] transition border border-zinc-200/60"
                 >
                   {fpPhoto && (
-                    <div className="w-full aspect-[4/5] bg-zinc-100 relative overflow-hidden">
+                    <div className="w-full bg-zinc-100 relative overflow-hidden">
                       <img
                         src={fpPhoto}
                         alt={fpTitle}
-                        className="w-full h-full object-cover"
+                        className="w-full h-auto max-h-[520px] object-cover block"
                       />
                       <div className="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-[#141416]/90 backdrop-blur-xs text-[#FFEA00] text-[11px] font-extrabold flex items-center gap-1.5 shadow-md">
                         <Clock className="w-3.5 h-3.5 text-[#EC008C]" />
@@ -254,8 +262,8 @@ export const HomePage: React.FC<HomePageProps> = ({
                     </div>
 
                     <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-zinc-500">
-                        Tap to view poster & join
+                      <span className="text-[11px] font-semibold text-zinc-500">
+                        Tap for details & rules
                       </span>
                       <button
                         type="button"
@@ -263,7 +271,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                           e.stopPropagation();
                           onOpenContest(contest.id);
                         }}
-                        className="h-9 px-4 rounded-full bg-[#EC008C] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm"
+                        className="h-9 px-4 rounded-full bg-[#EC008C] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm hover:bg-[#d6007e] transition"
                       >
                         <span>Submit Entry</span>
                         <ArrowRight className="w-3.5 h-3.5" />

@@ -28,11 +28,11 @@ const INITIAL_DATABASE: HsgDatabaseSchema = {
     theme_color_1:
       (typeof window !== 'undefined' &&
         localStorage.getItem('hsg_theme_color_1')) ||
-      '#FFEA00',
+      '',
     theme_color_2:
       (typeof window !== 'undefined' &&
         localStorage.getItem('hsg_theme_color_2')) ||
-      '#EC008C',
+      '',
     referral_enabled: true,
     referral_referrer_cashback: 5.0,
     referral_referrer_points: 50,
@@ -52,6 +52,7 @@ const INITIAL_DATABASE: HsgDatabaseSchema = {
   events: [],
   contests: [],
   contest_submissions: [],
+  contest_winners: [],
   rewards: [],
   announcements: [],
   highlights: [],
@@ -120,7 +121,7 @@ interface HsgDataContextValue {
     }>;
     fulfillment: 'collect' | 'delivery';
     deliveryAddress?: string;
-  }) => { ok: boolean; message: string };
+  }) => Promise<{ ok: boolean; message: string }>;
   updateAccountProfile: (updated: Partial<UserAccount>) => void;
   rsvpEvent: (
     eventId: string,
@@ -134,8 +135,14 @@ interface HsgDataContextValue {
   submitContestEntry: (
     answers: Record<string, string | number>,
     photoName?: string,
-    contestId?: string
+    contestId?: string,
+    entryDetails?: {
+      receipt_photo_url?: string;
+      amount_paid?: number;
+      items_count?: number;
+    }
   ) => void;
+  claimContestPrize: (winnerId: string) => Promise<boolean>;
   claimReward: (rewardId: string, method: 'collect' | 'delivery') => void;
   claimReferralCode: (
     code: string
@@ -269,6 +276,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           ...prev,
           contests: publishedContests,
           contest_submissions: allSubs,
+          contest_winners: Array.isArray(ctData.winners) ? ctData.winners : [],
         }));
       }
 
@@ -298,52 +306,59 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         const evData = await evRes.json();
         if (Array.isArray(evData.events)) {
           const rsvps = Array.isArray(evData.rsvps) ? evData.rsvps : [];
-          const authPhone = (localStorage.getItem('hsg_auth_phone') ) || '';
-          setDb((prev) => ({
-            ...prev,
-            events: evData.events
-              .filter((ev: any) => ev.is_active !== false)
-              .map((ev: any) => {
-                const evRsvps = rsvps.filter((r: any) => r.event_id === ev.id);
-                const myRsvp = evRsvps.find((r: any) => r.user_phone === authPhone);
-                return {
-                  id: ev.id,
-                  title: ev.title,
-                  category: ev.category || 'Community',
-                  brands_involved:
-                    Array.isArray(ev.brands_involved) &&
-                    ev.brands_involved.length > 0
-                      ? ev.brands_involved
-                      : ['HSG+'],
-                  date_timestamp: Number(ev.date_timestamp || Date.now()),
-                  time_label: new Date(Number(ev.date_timestamp || Date.now())).toLocaleTimeString('en-GB', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
-                  location: ev.location_name || ev.location_address || 'Singapore',
-                  distance_or_format: ev.category || 'Community',
-                  fee_amount: Number(ev.fee_amount || 0),
-                  fee_points: Number(ev.fee_points || 0),
-                  duration_hours: Number(ev.duration_hours || 4),
-                  reward_points: Number(ev.reward_points || 0),
-                  outcome_url: ev.outcome_url || '',
-                  requirement_text:
-                    ev.requirement_text ||
-                    'Free Entry — Open to all HSG+ members',
-                  joined_count: evRsvps.length,
-                  max_capacity: Number(ev.max_capacity || 100),
-                  checkin_mode: 'both_qr',
-                  event_qr_code: `EVT-${ev.id}`,
-                  user_status: myRsvp
-                    ? myRsvp.checked_in_at > 0
-                      ? 'checked_in'
-                      : 'joined'
-                    : 'none',
-                  image_url: ev.banner_url || '',
-                  description: ev.description || '',
-                };
-              }),
-          }));
+          const authPhone = (localStorage.getItem('hsg_auth_phone')) || '';
+          const authUserId = (localStorage.getItem('hsg_auth_user_id')) || '';
+          setDb((prev) => {
+            const currentUserId = prev.user?.id || authUserId;
+            return {
+              ...prev,
+              events: evData.events
+                .filter((ev: any) => ev.is_active !== false)
+                .map((ev: any) => {
+                  const evRsvps = rsvps.filter((r: any) => r.event_id === ev.id);
+                  const myRsvp = evRsvps.find((r: any) => 
+                    (currentUserId && r.user_id === currentUserId) ||
+                    (authPhone && r.user_phone === authPhone)
+                  );
+                  return {
+                    id: ev.id,
+                    title: ev.title,
+                    category: ev.category || 'Community',
+                    brands_involved:
+                      Array.isArray(ev.brands_involved) &&
+                      ev.brands_involved.length > 0
+                        ? ev.brands_involved
+                        : ['HSG+'],
+                    date_timestamp: Number(ev.date_timestamp || Date.now()),
+                    time_label: new Date(Number(ev.date_timestamp || Date.now())).toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    }),
+                    location: ev.location_name || ev.location_address || 'Singapore',
+                    distance_or_format: ev.distance_or_format || ev.format || '',
+                    fee_amount: Number(ev.fee_amount || 0),
+                    fee_points: Number(ev.fee_points || 0),
+                    duration_hours: Number(ev.duration_hours || 4),
+                    reward_points: Number(ev.reward_points || 0),
+                    outcome_url: ev.outcome_url || '',
+                    requirement_text:
+                      ev.requirement_text ||
+                      'Free Entry — Open to all HSG+ members',
+                    joined_count: evRsvps.length,
+                    max_capacity: Number(ev.max_capacity || 100),
+                    checkin_mode: 'both_qr',
+                    event_qr_code: `EVT-${ev.id}`,
+                    user_status: myRsvp
+                      ? myRsvp.checked_in_at > 0
+                        ? 'checked_in'
+                        : 'joined'
+                      : 'none',
+                    image_url: ev.banner_url || '',
+                    description: ev.description || '',
+                  };
+                }),
+            };
+          });
         }
       }
 
@@ -411,7 +426,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
               ),
             },
             merch_catalog: Array.isArray(stData.merch)
-              ? stData.merch.map((m: any) => ({
+              ? stData.merch
+                  .filter((m: any) => m.is_active !== false)
+                  .map((m: any) => ({
                   id: m.id,
                   brand_name: m.category === 'Merch' ? 'Merch' : 'Product',
                   name: m.name,
@@ -725,13 +742,13 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     liveUserObj?: UserAccount
   ) => {
     const cleanPhone = (phoneInput || '').replace(/\D/g, '');
-    const finalName = nameInput || (cleanPhone ? `Member_${cleanPhone.slice(-4)}` : 'HSG Member');
+    const resolvedName = liveUserObj?.nickname || nameInput || (cleanPhone ? `Member_${cleanPhone.slice(-4)}` : 'HSG Member');
     const assignedId = liveUserObj?.id || liveUserObj?.user_id || (localStorage.getItem('hsg_auth_user_id') ) || '';
     const userRecord: UserAccount = liveUserObj || {
       id: assignedId || undefined,
       user_id: assignedId || undefined,
       phone_number: cleanPhone,
-      nickname: finalName,
+      nickname: resolvedName,
       paynow: '',
       socials: { tt: '', fb: '', thread: '', ig: '' },
       wallet_balance: 0,
@@ -764,12 +781,15 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     setShowLoginModal(false);
     showToast(`Welcome, ${userRecord.nickname}!`);
 
-    // Sync to live Supabase database
+    // Sync to live Supabase database (with is_login_sync so backend protects custom nickname)
     try {
       const syncRes = await fetch(`${LIVE_WORKER_URL}/api/hsg-app/users/upsert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userRecord),
+        body: JSON.stringify({
+          ...userRecord,
+          is_login_sync: true,
+        }),
       });
       if (syncRes.ok) {
         const sData = await syncRes.json();
@@ -854,7 +874,15 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.removeItem('hsg_auth_paynow');
       sessionStorage.removeItem('hsg_pending_referral_code');
     } catch (e) {}
-    setDb((prev) => ({ ...prev, user: null }));
+    setDb((prev) => ({
+      ...prev,
+      user: null,
+      history: [],
+      transactions: [],
+      cashback_claims: [],
+      notifications: [],
+      events: (prev.events || []).map((ev) => ({ ...ev, user_status: 'none' })),
+    }));
     setIsAuthenticated(false);
     showToast('Signed out of session');
   };
@@ -1457,7 +1485,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     return { ok: true, message: msg };
   };
 
-  const checkoutRedeemCart = (payload: {
+  const checkoutRedeemCart = async (payload: {
     items: Array<{
       merchId: string;
       qty: number;
@@ -1465,7 +1493,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }>;
     fulfillment: 'collect' | 'delivery';
     deliveryAddress?: string;
-  }) => {
+  }): Promise<{ ok: boolean; message: string }> => {
     if (!isAuthenticated) {
       requireAuth(() => checkoutRedeemCart(payload));
       return { ok: false, message: 'Please sign in with WhatsApp first.' };
@@ -1473,7 +1501,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!db.user) return { ok: false, message: 'Please log in first.' };
 
     if (db.user.is_blocked) {
-      const msg = 'Your account is restricted from redeeming rewards or using cashback and points.';
+      const msg = 'Your account is restricted from placing orders.';
       showToast(msg);
       return { ok: false, message: msg };
     }
@@ -1494,6 +1522,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     let totalCashRequired =
       payload.fulfillment === 'delivery' ? Number(db.settings.delivery_fee || 0) : 0;
     const summaryLabels: string[] = [];
+    const formattedOrderItems: any[] = [];
 
     for (const row of payload.items) {
       const item = db.merch_catalog.find((m) => m.id === row.merchId);
@@ -1508,6 +1537,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       const ptsPrice = Number(
         item.price_points ?? Math.round(item.price * 10)
       );
+
+      formattedOrderItems.push({
+        merch_id: item.id,
+        name: item.name,
+        qty: row.qty,
+        payWith: actualPayWith,
+        price: item.price,
+        price_points: ptsPrice,
+        image_url: item.image_url,
+      });
 
       if (actualPayWith === 'points') {
         totalPointsRequired += ptsPrice * row.qty;
@@ -1543,50 +1582,82 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         ? (payload.deliveryAddress || db.user.address || '').trim()
         : db.user.address;
 
-    const updatedUser: UserAccount = {
-      ...db.user,
-      wallet_balance: nextCash,
-      points_balance: nextPts,
-      address: confirmedAddress,
-    };
+    try {
+      const res = await fetch(`${LIVE_WORKER_URL}/api/hsg-app/merch-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: db.user.id || '',
+          user_phone: db.user.phone_number,
+          user_nickname: db.user.nickname || 'Member',
+          items: formattedOrderItems,
+          fulfillment: payload.fulfillment,
+          delivery_address: confirmedAddress,
+          delivery_fee: payload.fulfillment === 'delivery' ? Number(db.settings.delivery_fee || 0) : 0,
+          total_cash: totalCashRequired,
+          total_points: totalPointsRequired,
+        }),
+      });
 
-    const paymentParts: string[] = [];
-    if (totalPointsRequired > 0) paymentParts.push(`${totalPointsRequired} pts`);
-    if (totalCashRequired > 0)
-      paymentParts.push(`$${totalCashRequired.toFixed(2)}`);
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const errMsg = resData.error || 'Failed to place order. Please try again.';
+        showToast(errMsg);
+        return { ok: false, message: errMsg };
+      }
 
-    const redeemRecord: CashbackHistoryItem = {
-      id: 'MERCH-' + Math.floor(10000 + Math.random() * 90000),
-      type: 'merch_redeem',
-      title: `Redeemed (${paymentParts.join(' + ')}): ${summaryLabels.join(', ')} (${
-        payload.fulfillment === 'delivery'
-          ? `Delivery to ${confirmedAddress}`
-          : `Self-Pickup at ${db.settings.self_collect_address || 'HSG Global HQ'}`
-      })`,
-      amount: -Number(totalCashRequired.toFixed(2)),
-      status: 'completed',
-      fulfillment_mode: payload.fulfillment,
-      timestamp: Date.now(),
-    };
+      const orderId = resData.order_id || 'ORD-' + Date.now();
+      const updatedCash = resData.wallet_balance !== undefined ? resData.wallet_balance : nextCash;
+      const updatedPts = resData.points_balance !== undefined ? resData.points_balance : nextPts;
 
-    setDb((prev) => ({
-      ...prev,
-      user: updatedUser,
-      users_list: prev.users_list.map((u) =>
-        u.phone_number === updatedUser.phone_number ? updatedUser : u
-      ),
-      history: [redeemRecord, ...prev.history],
-    }));
+      const updatedUser: UserAccount = {
+        ...db.user,
+        wallet_balance: updatedCash,
+        points_balance: updatedPts,
+        address: confirmedAddress,
+      };
 
-    fetch(`${LIVE_WORKER_URL}/api/hsg-app/users/upsert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedUser),
-    }).catch(() => {});
+      const paymentParts: string[] = [];
+      if (totalPointsRequired > 0) paymentParts.push(`${totalPointsRequired} pts`);
+      if (totalCashRequired > 0)
+        paymentParts.push(`$${totalCashRequired.toFixed(2)}`);
 
-    const msg = `Redemption confirmed! (${summaryLabels.join(', ')})`;
-    showToast(msg);
-    return { ok: true, message: msg };
+      const orderRecord: CashbackHistoryItem = {
+        id: orderId,
+        type: 'shop_order' as any,
+        title: `Shop Order (${paymentParts.join(' + ')}): ${summaryLabels.join(', ')} (${
+          payload.fulfillment === 'delivery'
+            ? `Delivery to ${confirmedAddress}`
+            : `Self-Pickup at ${db.settings.self_collect_address || 'HSG Global HQ'}`
+        })`,
+        amount: -Number(totalCashRequired.toFixed(2)),
+        status: 'completed',
+        fulfillment_mode: payload.fulfillment,
+        timestamp: Date.now(),
+      };
+
+      setDb((prev) => ({
+        ...prev,
+        user: updatedUser,
+        users_list: prev.users_list.map((u) =>
+          u.phone_number === updatedUser.phone_number ? updatedUser : u
+        ),
+        history: [orderRecord, ...prev.history],
+      }));
+
+      // Background re-fetch to sync fresh transaction and order ledger
+      if (db.user.phone_number) {
+        syncLiveTransactions(db.user.phone_number).catch(() => {});
+      }
+
+      const msg = `Order placed successfully! (${summaryLabels.join(', ')})`;
+      showToast(msg);
+      return { ok: true, message: msg };
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error placing order.';
+      showToast(errMsg);
+      return { ok: false, message: errMsg };
+    }
   };
 
   const updateAccountProfile = async (updated: Partial<UserAccount>) => {
@@ -1756,6 +1827,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: eventId,
+          user_id: db.user.id || (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '',
           user_phone: db.user.phone_number,
           scanned_code: scannedCode || eventId,
         }),
@@ -1831,21 +1903,47 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const submitContestEntry = (
     answers: Record<string, string | number>,
     photoName?: string,
-    contestId?: string
+    contestId?: string,
+    entryDetails?: {
+      receipt_photo_url?: string;
+      amount_paid?: number;
+      items_count?: number;
+    }
   ) => {
     if (!isAuthenticated) {
-      requireAuth(() => submitContestEntry(answers, photoName, contestId));
+      requireAuth(() =>
+        submitContestEntry(answers, photoName, contestId, entryDetails)
+      );
       return;
     }
     const targetContest =
       db.contests.find((c) => c.id === contestId) || db.contests[0];
     const ptsEarned = Number(
-      targetContest?.submission_limits?.points_per_submission || 0
+      targetContest?.reward_points ??
+        targetContest?.submission_limits?.points_per_submission ??
+        0
     );
     if (targetContest) {
       const subId = 'CSUB-' + Date.now();
-      const userPhone = db.user?.phone_number || (localStorage.getItem('hsg_auth_phone') ) || '';
-      const userNick = db.user?.nickname || (localStorage.getItem('hsg_auth_name') ) || 'HSG Member';
+      const storedPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
+      const rawUserPhone = db.user?.phone_number || '';
+      const userPhone =
+        (storedPhone && storedPhone.length < 32 ? storedPhone : '') ||
+        (rawUserPhone && rawUserPhone.length < 32 ? rawUserPhone : '') ||
+        storedPhone ||
+        rawUserPhone;
+      const userNick =
+        db.user?.nickname ||
+        (typeof window !== 'undefined'
+          ? localStorage.getItem('hsg_auth_name')
+          : '') ||
+        'HSG Member';
+      const uid =
+        db.user?.id ||
+        (typeof window !== 'undefined'
+          ? localStorage.getItem('hsg_auth_user_id')
+          : '') ||
+        '';
 
       fetch(`${LIVE_WORKER_URL}/api/hsg-app/contests/submissions`, {
         method: 'POST',
@@ -1853,9 +1951,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         body: JSON.stringify({
           id: subId,
           contest_id: targetContest.id,
-          user_id: db.user?.id || (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '',
+          user_id: uid,
           user_phone: userPhone,
           user_nickname: userNick,
+          receipt_photo_url:
+            entryDetails?.receipt_photo_url ||
+            (photoName?.startsWith('http') ? photoName : '') ||
+            '',
+          amount_paid: Number(entryDetails?.amount_paid || 0),
+          items_count: Number(entryDetails?.items_count || 1),
+          extra_answers: answers,
           answer_json: answers,
         }),
       })
@@ -1882,7 +1987,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                 {
                   id: 'HIST-CT-' + Date.now(),
                   type: 'cashback_credit',
-                  title: `Contest Entry: ${targetContest.title} — +${ptsEarned} pts`,
+                  title: `Contest Entry: ${
+                    targetContest.frontpage_title || targetContest.title
+                  } — +${ptsEarned} pts`,
                   amount: 0,
                   status: 'credited',
                   timestamp: Date.now(),
@@ -1894,10 +2001,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           {
             id: subId,
             contest_id: targetContest.id,
-            contest_title: targetContest.title,
+            user_id: uid,
+            contest_title:
+              targetContest.frontpage_title || targetContest.title,
             user_phone: userPhone,
             user_nickname: userNick,
             photo_name: photoName || '',
+            receipt_photo_url: entryDetails?.receipt_photo_url || '',
+            amount_paid: Number(entryDetails?.amount_paid || 0),
+            items_count: Number(entryDetails?.items_count || 1),
+            extra_answers: answers,
             answer_json: answers,
             answers_json: answers,
             status: 'submitted',
@@ -1913,6 +2026,80 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         ? `Contest entry submitted! +${ptsEarned} pts earned!`
         : 'Contest entry submitted! Good luck!'
     );
+  };
+
+  const claimContestPrize = async (winnerId: string): Promise<boolean> => {
+    if (!isAuthenticated) {
+      requireAuth(() => claimContestPrize(winnerId));
+      return false;
+    }
+    try {
+      const res = await fetch(
+        `${LIVE_WORKER_URL}/api/hsg-app/contests/winners/${encodeURIComponent(
+          winnerId
+        )}/claim`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id:
+              db.user?.id ||
+              (typeof window !== 'undefined'
+                ? localStorage.getItem('hsg_auth_user_id')
+                : '') ||
+              '',
+            user_phone:
+              db.user?.phone_number ||
+              (typeof window !== 'undefined'
+                ? localStorage.getItem('hsg_auth_phone')
+                : '') ||
+              '',
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        showToast(data.message || 'Failed to claim prize');
+        return false;
+      }
+      setDb((prev) => ({
+        ...prev,
+        contest_winners: (prev.contest_winners || []).map((w) =>
+          w.id === winnerId
+            ? { ...w, status: 'claimed', claimed: true, claimed_at: Date.now() }
+            : w
+        ),
+        user: prev.user
+          ? {
+              ...prev.user,
+              wallet_balance: Number(
+                (
+                  Number(prev.user.wallet_balance || 0) +
+                  Number(data.reward_cash || 0)
+                ).toFixed(2)
+              ),
+              cashback_balance: Number(
+                (
+                  Number(prev.user.cashback_balance || 0) +
+                  Number(data.reward_cash || 0)
+                ).toFixed(2)
+              ),
+              points_balance: Math.round(
+                Number(prev.user.points_balance || 0) +
+                  Number(data.reward_points || 0)
+              ),
+            }
+          : prev.user,
+      }));
+      showToast(data.message || 'Prize claimed successfully!');
+      syncLiveCashback();
+      syncLiveUsers();
+      syncLiveTransactions();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Network error claiming prize');
+      return false;
+    }
   };
 
   const claimReward = (rewardId: string, method: 'collect' | 'delivery') => {
@@ -2054,6 +2241,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         rsvpEvent,
         checkInEvent,
         submitContestEntry,
+        claimContestPrize,
         claimReward,
         claimReferralCode,
         refreshTransactions: syncLiveTransactions,

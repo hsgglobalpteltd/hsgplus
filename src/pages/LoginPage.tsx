@@ -110,15 +110,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
       .catch(() => {});
   }, []);
 
-  // Clean full international phone string (e.g. "6591234567")
-  const fullPhone = `${selectedCountry.dial.replace(/\D/g, '')}${phoneDigits.replace(/\D/g, '')}`;
+  // Clean full international phone string (e.g. "6591234567" or "62812345678", stripping leading 0)
+  const cleanLocalDigits = phoneDigits.replace(/\D/g, '').replace(/^0+/, '');
+  const fullPhone = `${selectedCountry.dial.replace(/\D/g, '')}${cleanLocalDigits}`;
 
   // Silent Database Check on Typing Last Digit
   useEffect(() => {
-    const rawCleanDigits = phoneDigits.replace(/\D/g, '');
+    const rawCleanDigits = phoneDigits.replace(/\D/g, '').replace(/^0+/, '');
 
     // Reset if digits incomplete
-    if (rawCleanDigits.length < selectedCountry.minDigits) {
+    if (rawCleanDigits.length < selectedCountry.minDigits - 1 && rawCleanDigits.length < 8) {
       setIsRegistered(false);
       setIsCheckingUser(false);
       return;
@@ -133,10 +134,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
     checkDebounceRef.current = window.setTimeout(async () => {
       try {
         const targetCleanPhone = `${selectedCountry.dial.replace(/\D/g, '')}${rawCleanDigits}`;
-        const sgPhone = targetCleanPhone.startsWith('65') ? targetCleanPhone : `65${targetCleanPhone}`;
         let phoneHash = '';
         try {
-          const msgUint8 = new TextEncoder().encode(sgPhone);
+          const msgUint8 = new TextEncoder().encode(targetCleanPhone);
           const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
           const hashArray = Array.from(new Uint8Array(hashBuffer));
           phoneHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');

@@ -141,6 +141,7 @@ const HsgMobileShell: React.FC = () => {
   const [redeemBackRoute, setRedeemBackRoute] = useState<'home' | 'account'>(
     'home'
   );
+  const [eventBackRoute, setEventBackRoute] = useState<'events' | 'contest'>('events');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     const raw = window.location.hash || window.location.search;
@@ -271,8 +272,9 @@ const HsgMobileShell: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const c1 = (db.settings.theme_color_1 || '#FFEA00').trim() || '#FFEA00';
-    const c2 = (db.settings.theme_color_2 || '#EC008C').trim() || '#EC008C';
+    if (!db.settings.theme_color_1 && !db.settings.theme_color_2) return;
+    const c1 = (db.settings.theme_color_1 || '#FFEA00').trim();
+    const c2 = (db.settings.theme_color_2 || '#EC008C').trim();
     document.documentElement.style.setProperty('--hsg-color-1', c1);
     document.documentElement.style.setProperty('--hsg-color-2', c2);
 
@@ -490,6 +492,7 @@ const HsgMobileShell: React.FC = () => {
             <HomePage
               onOpenAccount={() => navigateTo('account')}
               onOpenEvents={(eventId) => {
+                setEventBackRoute('events');
                 setSelectedEventId(eventId || null);
                 navigateTo('events');
               }}
@@ -509,8 +512,25 @@ const HsgMobileShell: React.FC = () => {
               selectedEventId={selectedEventId}
               onSelectEvent={(id) => {
                 setSelectedEventId(id);
-                if (!id) setIsVenueScan(false);
+                if (!id) {
+                  setIsVenueScan(false);
+                  if (eventBackRoute === 'contest') {
+                    setEventBackRoute('events');
+                    navigateTo('contest');
+                  }
+                }
               }}
+              onBackToSource={() => {
+                setSelectedEventId(null);
+                setIsVenueScan(false);
+                if (eventBackRoute === 'contest') {
+                  setEventBackRoute('events');
+                  navigateTo('contest');
+                } else {
+                  navigateTo('events');
+                }
+              }}
+              backLabel={eventBackRoute === 'contest' ? 'Contest' : undefined}
               isVenueScan={isVenueScan}
               onClearVenueScan={() => setIsVenueScan(false)}
               scrollContainerRef={mainScrollRef}
@@ -519,6 +539,11 @@ const HsgMobileShell: React.FC = () => {
             <ContestPage
               initialContestId={selectedContestId}
               onBack={() => navigateTo('home')}
+              onNavigateToEvent={(eventId) => {
+                if (eventId) setSelectedEventId(eventId);
+                setEventBackRoute('contest');
+                navigateTo('events');
+              }}
             />
           ) : route === 'redeem' ? (
             <RedeemShopPage onBack={() => navigateTo(redeemBackRoute)} />
@@ -646,6 +671,7 @@ const HsgMobileShell: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              setEventBackRoute('events');
               setSelectedEventId(null);
               navigateTo('events');
             }}

@@ -10,12 +10,15 @@ import {
   Copy,
   FileText,
   Gift,
+  Loader2,
   LogOut,
+  MessageCircle,
   Receipt,
   Settings,
   Share2,
   ShieldCheck,
   ShoppingBag,
+  Trophy,
   Wifi,
   X,
   XCircle,
@@ -53,6 +56,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     db,
     updateAccountProfile,
     requestWithdrawal,
+    claimContestPrize,
     logout,
     isAuthenticated,
     openLoginModal,
@@ -64,6 +68,20 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [walletActionTab, setWalletActionTab] = useState<'withdraw' | null>(
     null
   );
+  const [claimingWinnerId, setClaimingWinnerId] = useState<string | null>(null);
+
+  const userWinningPrizes = useMemo(() => {
+    if (!isAuthenticated) return [];
+    const uid =
+      db.user?.id ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('hsg_auth_user_id')
+        : '') ||
+      '';
+    if (!uid) return [];
+
+    return (db.contest_winners || []).filter((w) => w.user_id === uid);
+  }, [isAuthenticated, db.user?.id, db.contest_winners]);
 
   const MOCK_AVAILABLE_CASH = 55.0;
   const MOCK_TOTAL_CASH = 88.9;
@@ -137,6 +155,64 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [fb, setFb] = useState(db.user?.socials?.fb || '');
   const [thread, setThread] = useState(db.user?.socials?.thread || '');
   const [ig, setIg] = useState(db.user?.socials?.ig || '');
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // Smoothly center-scroll any focused input into the active visible window
+  const handleScrollInputToCenter = (target: HTMLElement | null) => {
+    if (!target) return;
+    const scroll = () => {
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest',
+      });
+    };
+    // Immediate
+    scroll();
+    // After virtual keyboard pops up (animation takes 250-350ms on iOS / Android)
+    setTimeout(scroll, 150);
+    setTimeout(scroll, 350);
+    setTimeout(scroll, 550);
+  };
+
+  // Re-scroll active input whenever mobile virtual keyboard resizes the visual viewport
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+    const handleViewportResize = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') &&
+        (active as HTMLInputElement).type !== 'checkbox'
+      ) {
+        handleScrollInputToCenter(active);
+      }
+    };
+    const vp = window.visualViewport;
+    vp.addEventListener('resize', handleViewportResize);
+    return () => {
+      vp.removeEventListener('resize', handleViewportResize);
+    };
+  }, []);
+
+  const handleFormFocus = (e: React.FocusEvent<HTMLFormElement>) => {
+    const target = e.target as HTMLElement;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+      if ((target as HTMLInputElement).type === 'checkbox') return;
+      isEditingRef.current = true;
+      setIsInputFocused(true);
+      handleScrollInputToCenter(target);
+    }
+  };
+
+  const handleFormBlur = (e: React.FocusEvent<HTMLFormElement>) => {
+    const currentTarget = e.currentTarget;
+    setTimeout(() => {
+      if (!currentTarget.contains(document.activeElement)) {
+        setIsInputFocused(false);
+      }
+    }, 200);
+  };
 
   // Track if user has touched/edited form inputs to prevent background 15s sync from wiping typing
   const isEditingRef = useRef(false);
@@ -166,8 +242,18 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         if (db.user.socials?.thread) setThread(db.user.socials.thread);
         if (db.user.socials?.ig) setIg(db.user.socials.ig);
       }
+    } else if (!isAuthenticated) {
+      hasLoadedUserRef.current = null;
+      setNickname('');
+      setPaynow('');
+      setTt('');
+      setFb('');
+      setThread('');
+      setIg('');
+      setLocalActivities([]);
+      setActiveSubTab('activity');
     }
-  }, [db.user]);
+  }, [db.user, isAuthenticated]);
 
   // Activity items state from live database and current session (no stale localStorage caching)
   const [localActivities, setLocalActivities] = useState<ActivityItem[]>([]);
@@ -178,11 +264,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
   // Compile full activity feed
   const allActivities = useMemo<ActivityItem[]>(() => {
-    const list: ActivityItem[] = [...localActivities];
-
     // If guest / not logged in, include attractive sample activity entries matching teaser wallet balances
     if (!isAuthenticated) {
-      list.push(
+      return [
         {
           id: 'mock-claim-approved',
           category: 'Receipt Claim',
@@ -210,8 +294,10 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           badge: { label: 'Reward', variant: 'blue' },
           iconType: 'shield',
         }
-      );
+      ];
     }
+
+    const list: ActivityItem[] = [...localActivities];
 
     // 1. Claims activity (submitted, approved, rejected)
     (db.cashback_claims || []).forEach((c) => {
@@ -332,13 +418,25 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         return true;
       })
       .sort((a, b) => b.timestamp - a.timestamp);
-  }, [localActivities, db.cashback_claims, db.transactions, db.user]);
+  }, [localActivities, db.cashback_claims, db.transactions, db.user, isAuthenticated]);
 
   // Withdrawal state
   const [withdrawAmount, setWithdrawAmount] = useState<string>(
     String(db.settings.min_withdrawal_amount)
   );
   const [showWithdrawConfirmModal, setShowWithdrawConfirmModal] = useState<boolean>(false);
+
+  // Check if there is an active pending withdrawal in history or transactions
+  const hasPendingWithdrawal = useMemo(() => {
+    return (
+      (db.transactions || []).some(
+        (tx) => tx.type === 'withdrawal' && (tx.status === 'pending' || tx.status === 'requested' || tx.status === 'pending_payout')
+      ) ||
+      (db.history || []).some(
+        (h) => h.type === 'withdrawal' && (h.status === 'pending' || h.status === 'pending_payout')
+      )
+    );
+  }, [db.transactions, db.history]);
 
   const requireRules = db.settings.require_points_for_withdrawal !== false;
   const minPts = Number(db.settings.min_points_to_unlock_withdrawal ?? 100);
@@ -437,17 +535,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     const amt = Number(withdrawAmount);
     const resolvedPaynow = paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
     requestWithdrawal(amt, resolvedPaynow);
-
-    // Record withdrawal request activity
-    saveCustomActivity({
-      id: `act-withdraw-${Date.now()}`,
-      category: 'Withdrawal',
-      title: 'PayNow Withdrawal Submitted',
-      description: `Requested ${amt.toFixed(2)} transfer to PayNow ${resolvedPaynow}.`,
-      timestamp: Date.now(),
-      badge: { label: 'Processing', variant: 'amber' },
-      iconType: 'wallet',
-    });
+    // Hide withdrawal form box after request
+    setWalletActionTab(null);
   };
 
   const formatActivityTime = (ts: number) => {
@@ -531,14 +620,18 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         <span className="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-[#141416] pointer-events-none">
           Wallet & Account
         </span>
-        <button
-          type="button"
-          onClick={logout}
-          title="Sign Out"
-          className="w-9 h-9 rounded-full bg-white/90 text-zinc-600 flex items-center justify-center shadow-2xs active:scale-95 transition"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-        </button>
+        {isAuthenticated ? (
+          <button
+            type="button"
+            onClick={logout}
+            title="Sign Out"
+            className="w-9 h-9 rounded-full bg-white/90 text-zinc-600 flex items-center justify-center shadow-2xs active:scale-95 transition"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <div className="w-9 h-9" />
+        )}
       </div>
 
       {/* MODERN WALLET CARD */}
@@ -719,8 +812,13 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             </div>
           )}
 
-          {/* Withdrawal Input & Submit Button (Only displays when all criteria rules are fulfilled) */}
-          {isWithdrawalUnlocked && (
+          {/* Withdrawal Input & Submit Button */}
+          {hasPendingWithdrawal ? (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/80 text-center space-y-1">
+              <div className="text-xs font-bold text-amber-900">Withdrawal Request in Progress</div>
+              <div className="text-[11px] text-amber-700">Your pending payout is being processed by Admin within {db.settings.withdrawal_sla_text}.</div>
+            </div>
+          ) : isWithdrawalUnlocked ? (
             <div className="space-y-1.5 pt-1">
               <div className="flex gap-2">
                 <input
@@ -729,8 +827,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   min={db.settings.min_withdrawal_amount}
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
+                  onFocus={(e) => handleScrollInputToCenter(e.currentTarget)}
                   placeholder={`Min ${db.settings.min_withdrawal_amount}`}
-                  className="flex-1 h-10 px-3.5 rounded-full bg-[#F6F6F9] text-[#141416] font-bold text-xs focus:outline-none"
+                  className="flex-1 h-10 px-3.5 rounded-full bg-[#F6F6F9] text-[#141416] font-bold text-xs focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20"
                 />
                 <button
                   type="submit"
@@ -750,7 +849,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 )}
               </div>
             </div>
-          )}
+          ) : null}
         </form>
       )}
 
@@ -766,7 +865,13 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           <button
             key={tab.id}
             type="button"
-            onClick={() => setActiveSubTab(tab.id)}
+            onClick={() => {
+              if (!isAuthenticated && tab.id !== 'activity') {
+                openLoginModal();
+                return;
+              }
+              setActiveSubTab(tab.id);
+            }}
             className={`h-9 rounded-full text-xs font-bold transition cursor-pointer ${
               activeSubTab === tab.id
                 ? 'bg-[#141416] text-[#FFEA00]'
@@ -857,7 +962,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       {activeSubTab === 'account' && (
         <form
           onSubmit={handleSaveProfile}
-          className="w-full p-5 rounded-3xl bg-white shadow-xs space-y-4"
+          onFocus={handleFormFocus}
+          onBlur={handleFormBlur}
+          className={`w-full p-5 rounded-3xl bg-white shadow-xs space-y-4 transition-all duration-200 ${
+            isInputFocused ? 'mb-80' : 'mb-36'
+          }`}
         >
           <div>
             <label className="block text-[11px] font-semibold text-zinc-500">
@@ -887,7 +996,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               type="text"
               value={nickname}
               onChange={(e) => { isEditingRef.current = true; setNickname(e.target.value); }}
-              className="w-full h-10 px-3.5 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs font-bold focus:outline-none"
+              onFocus={(e) => { isEditingRef.current = true; setIsInputFocused(true); handleScrollInputToCenter(e.currentTarget); }}
+              className="w-full h-10 px-3.5 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition"
             />
           </div>
 
@@ -899,7 +1009,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               type="text"
               value={paynow}
               onChange={(e) => { isEditingRef.current = true; setPaynow(e.target.value); }}
-              className="w-full h-10 px-3.5 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs font-bold focus:outline-none"
+              onFocus={(e) => { isEditingRef.current = true; setIsInputFocused(true); handleScrollInputToCenter(e.currentTarget); }}
+              className="w-full h-10 px-3.5 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition"
             />
           </div>
 
@@ -916,8 +1027,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   type="text"
                   value={tt}
                   onChange={(e) => { isEditingRef.current = true; setTt(e.target.value); }}
+                  onFocus={(e) => { isEditingRef.current = true; setIsInputFocused(true); handleScrollInputToCenter(e.currentTarget); }}
                   placeholder="@username"
-                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs"
+                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition"
                 />
               </div>
               <div>
@@ -928,8 +1040,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   type="text"
                   value={ig}
                   onChange={(e) => { isEditingRef.current = true; setIg(e.target.value); }}
+                  onFocus={(e) => { isEditingRef.current = true; setIsInputFocused(true); handleScrollInputToCenter(e.currentTarget); }}
                   placeholder="@username"
-                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs"
+                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition"
                 />
               </div>
               <div>
@@ -940,8 +1053,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   type="text"
                   value={fb}
                   onChange={(e) => { isEditingRef.current = true; setFb(e.target.value); }}
+                  onFocus={(e) => { isEditingRef.current = true; setIsInputFocused(true); handleScrollInputToCenter(e.currentTarget); }}
                   placeholder="username"
-                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs"
+                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition"
                 />
               </div>
               <div>
@@ -952,8 +1066,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   type="text"
                   value={thread}
                   onChange={(e) => { isEditingRef.current = true; setThread(e.target.value); }}
+                  onFocus={(e) => { isEditingRef.current = true; setIsInputFocused(true); handleScrollInputToCenter(e.currentTarget); }}
                   placeholder="@username"
-                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs"
+                  className="w-full h-9 px-3 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition"
                 />
               </div>
             </div>
@@ -988,47 +1103,167 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
       {/* 3. ACHIEVEMENTS SUB-VIEW */}
       {activeSubTab === 'achievement' && (
-        <div className="w-full space-y-2.5">
-          {db.achievements.length > 0 ? (
-            db.achievements.map((ach) => {
-              const pct = Math.min(
-                100,
-                Math.round((ach.progress_current / ach.progress_target) * 100)
-              );
-              return (
-                <div
-                  key={ach.id}
-                  className="w-full p-4 rounded-2xl bg-white shadow-2xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-[#141416]">
-                        {ach.title}
-                      </div>
-                      <div className="text-[11px] text-zinc-500">
-                        {ach.description}
+        <div className="w-full space-y-4">
+          {/* 1. CONTEST WINNER PRIZES TO CLAIM */}
+          {userWinningPrizes.length > 0 && (
+            <div className="w-full space-y-2.5">
+              <div className="flex items-center gap-1.5 px-1">
+                <Trophy className="w-4 h-4 text-amber-500" />
+                <h3 className="text-xs font-extrabold text-[#141416] uppercase tracking-wide">
+                  Contest Winner Rewards
+                </h3>
+              </div>
+
+              {userWinningPrizes.map((win) => {
+                const contestObj = db.contests.find((c) => c.id === win.contest_id);
+                const isClaimed = Boolean(win.claimed);
+                const winPhoto = win.product_image || win.prize_photo_url;
+                const winTitle = win.prize_title || win.product_name || 'Contest Prize';
+
+                const botPhone = (
+                  db.settings?.whatsapp_bot_number ||
+                  (db.settings as any)?.whatsapp_number ||
+                  '6584755948'
+                ).replace(/\D/g, '');
+                const claimText = `Hi HSG+ Team! I would like to claim my contest prize:\n\nContest: ${
+                  contestObj?.frontpage_title || contestObj?.title || 'Contest'
+                }\nPrize: ${winTitle}\nCode: CLAIM-WIN-${win.id}\n\nPlease verify and credit my prize. Thank you!`;
+                const waClaimUrl = `https://wa.me/${botPhone}?text=${encodeURIComponent(
+                  claimText
+                )}`;
+
+                const rewardParts: string[] = [];
+                if (win.reward_cash && Number(win.reward_cash) > 0) {
+                  rewardParts.push(`+$${Number(win.reward_cash).toFixed(2)} Cash`);
+                }
+                if (win.reward_points && Number(win.reward_points) > 0) {
+                  rewardParts.push(`+${win.reward_points} pts`);
+                }
+                if (win.product_name) {
+                  rewardParts.push(`🎁 ${win.product_name}`);
+                }
+                const rewardSummary =
+                  rewardParts.length > 0
+                    ? rewardParts.join(' • ')
+                    : win.reward_type === 'point'
+                    ? `+${win.reward_points || 0} pts`
+                    : `+$${Number(win.reward_cash || 0).toFixed(2)} Cash`;
+
+                return (
+                  <div
+                    key={win.id}
+                    className="w-full p-4 rounded-3xl bg-white shadow-xs border border-amber-200/60 space-y-3"
+                  >
+                    <div className="flex items-start gap-3">
+                      {winPhoto ? (
+                        <img
+                          src={winPhoto}
+                          alt={winTitle}
+                          className="w-14 h-14 rounded-2xl object-cover bg-amber-50 border border-amber-200 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0">
+                          <Trophy className="w-7 h-7" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-bold uppercase text-amber-600">
+                          {contestObj?.frontpage_title || contestObj?.title || 'Contest Reward'}
+                        </div>
+                        <h4 className="text-sm font-extrabold text-[#141416] truncate">
+                          {winTitle}
+                        </h4>
+                        {win.prize_description && (
+                          <p className="text-[11px] text-zinc-500 line-clamp-2 mt-0.5">
+                            {win.prize_description}
+                          </p>
+                        )}
+                        <div className="text-xs font-extrabold text-[#0B57D0] mt-1">
+                          Reward: {rewardSummary}
+                        </div>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-[#EC008C]">
-                      {ach.progress_current}/{ach.progress_target}
-                    </span>
+
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      {isClaimed ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200 w-fit">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Prize Claimed &amp; Credited</span>
+                          </div>
+                          {win.delivery_address && (
+                            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-left">
+                              <div className="text-[10px] font-bold uppercase text-zinc-500">
+                                Delivery Address (Saved)
+                              </div>
+                              <div className="text-xs text-zinc-800 whitespace-pre-line mt-0.5 font-medium leading-relaxed">
+                                {win.delivery_address}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <a
+                          href={waClaimUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full h-11 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white text-xs font-extrabold shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2"
+                        >
+                          <MessageCircle className="w-4 h-4 fill-white" />
+                          <span>Claim Prize via WhatsApp</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-[#F6F6F9] mt-3 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        ach.unlocked ? 'bg-emerald-500' : 'bg-[#FFEA00]'
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="w-full p-6 rounded-3xl bg-white text-center text-xs text-zinc-400">
-              No achievements available.
+                );
+              })}
             </div>
           )}
+
+          {/* 2. ACHIEVEMENTS LIST */}
+          <div className="w-full space-y-2.5">
+            {db.achievements.length > 0 ? (
+              db.achievements.map((ach) => {
+                const pct = Math.min(
+                  100,
+                  Math.round((ach.progress_current / ach.progress_target) * 100)
+                );
+                return (
+                  <div
+                    key={ach.id}
+                    className="w-full p-4 rounded-2xl bg-white shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold text-[#141416]">
+                          {ach.title}
+                        </div>
+                        <div className="text-[11px] text-zinc-500">
+                          {ach.description}
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-[#EC008C]">
+                        {ach.progress_current}/{ach.progress_target}
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-[#F6F6F9] mt-3 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          ach.unlocked ? 'bg-emerald-500' : 'bg-[#FFEA00]'
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="w-full p-6 rounded-3xl bg-white text-center text-xs text-zinc-400">
+                No achievements available.
+              </div>
+            )}
+          </div>
         </div>
       )}
       {/* PAYNOW WITHDRAWAL CONFIRMATION POPUP MODAL */}

@@ -40,6 +40,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
   );
   const [pickupConfirmed, setPickupConfirmed] = useState<boolean>(true);
   const [lastOrderMessage, setLastOrderMessage] = useState<string>('');
+  const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
 
   const userPts = isAuthenticated && db.user
     ? Number(db.user?.points_balance || 0)
@@ -196,25 +197,30 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
     };
   }, [cartList, fulfillment, deliveryFee, userPts, userCash]);
 
-  const handleConfirmCheckout = (e: React.FormEvent) => {
+  const handleConfirmCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (cartList.length === 0) return;
+    if (cartList.length === 0 || isPlacingOrder) return;
     if (fulfillment === 'collect' && !pickupConfirmed) return;
 
-    const res = checkoutRedeemCart({
-      items: cartList.map((c) => ({
-        merchId: c.merchId,
-        qty: c.qty,
-        payWith: c.payWith,
-      })),
-      fulfillment,
-      deliveryAddress: deliveryAddress.trim(),
-    });
+    setIsPlacingOrder(true);
+    try {
+      const res = await checkoutRedeemCart({
+        items: cartList.map((c) => ({
+          merchId: c.merchId,
+          qty: c.qty,
+          payWith: c.payWith,
+        })),
+        fulfillment,
+        deliveryAddress: deliveryAddress.trim(),
+      });
 
-    if (res.ok) {
-      setLastOrderMessage(res.message);
-      setCart({});
-      setStep('done');
+      if (res.ok) {
+        setLastOrderMessage(res.message);
+        setCart({});
+        setStep('done');
+      }
+    } finally {
+      setIsPlacingOrder(false);
     }
   };
 
@@ -238,7 +244,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
         </button>
 
         <span className="absolute left-1/2 -translate-x-1/2 text-sm font-extrabold text-[#141416] pointer-events-none">
-          {step === 'checkout' ? 'Confirm Redemption' : 'HSG+ Shop'}
+          {step === 'checkout' ? 'Checkout Order' : 'HSG+ Shop'}
         </span>
 
         <button
@@ -285,7 +291,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
             <Check className="w-6 h-6" />
           </div>
           <h2 className="text-base font-extrabold text-[#141416]">
-            Redemption Confirmed!
+            Order Placed Successfully!
           </h2>
           <p className="text-xs text-zinc-500 leading-relaxed">
             {lastOrderMessage}
@@ -333,7 +339,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
           {/* 2 CARDS IN ONE ROW SHOP GRID */}
           {filteredCatalog.length === 0 ? (
             <div className="w-full p-8 rounded-3xl bg-white text-center text-xs text-zinc-400">
-              No redeemable products available right now.
+              No products available right now.
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
@@ -618,7 +624,7 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
           {/* 3. PAYMENT SUMMARY & CONFIRM BUTTON */}
           <div className="w-full p-4 rounded-3xl bg-white shadow-xs space-y-3">
             <span className="text-xs font-extrabold text-[#141416] block">
-              3. Redemption Summary
+              3. Order Payment Summary
             </span>
 
             <div className="space-y-1.5 text-xs">
@@ -656,13 +662,14 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
             <button
               type="submit"
               disabled={
+                isPlacingOrder ||
                 totals.insufficientPoints ||
                 totals.insufficientCash ||
                 (fulfillment === 'collect' && !pickupConfirmed)
               }
-              className="w-full h-11 rounded-full bg-[#EC008C] text-white text-xs font-extrabold shadow-sm disabled:opacity-45 transition"
+              className="w-full h-11 rounded-full bg-[#EC008C] text-white text-xs font-extrabold shadow-sm disabled:opacity-45 transition flex items-center justify-center gap-2 cursor-pointer"
             >
-              Confirm & Redeem Now
+              {isPlacingOrder ? 'Placing Order...' : 'Place Order Now'}
             </button>
           </div>
         </form>

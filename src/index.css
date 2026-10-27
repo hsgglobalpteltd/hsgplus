@@ -30,8 +30,9 @@
 }
 
 :root {
-  --hsg-color-1: #FFEA00;
-  --hsg-color-2: #EC008C;
+  /* Neutral initial loading skeleton palette (Light Gray & Dark Gray until theme finishes loading) */
+  --hsg-color-1: #E4E4E7;
+  --hsg-color-2: #27272A;
 }
 
 /* Soft modern ambient top gradient, dynamically driven by Colour 1 */

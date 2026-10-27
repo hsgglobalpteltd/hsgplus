@@ -84,11 +84,12 @@ export function getSimpleTxLabel(
 export const SimpleTransactionList: React.FC<{
   initialTab?: 'cashback' | 'points';
 }> = ({ initialTab = 'cashback' }) => {
-  const { db } = useHsgData();
+  const { db, isAuthenticated } = useHsgData();
   const [activeTab, setActiveTab] = useState<'cashback' | 'points'>(initialTab);
 
   // Deduplicate transactions by reference_id so pending -> verified stays on the exact same row
   const unifiedTransactions = useMemo(() => {
+    if (!isAuthenticated) return [];
     const rawList: HsgTransaction[] =
       db.transactions && db.transactions.length > 0
         ? db.transactions
@@ -156,7 +157,7 @@ export const SimpleTransactionList: React.FC<{
         Number(b.created_at || b.timestamp || 0) -
         Number(a.created_at || a.timestamp || 0)
     );
-  }, [db.transactions, db.history, db.user?.phone_number]);
+  }, [db.transactions, db.history, db.user?.phone_number, isAuthenticated]);
 
   const getPointsAmount = (tx: HsgTransaction): number => {
     const directPts = Number(tx.amount_points ?? tx.net_points ?? tx.points ?? 0);
