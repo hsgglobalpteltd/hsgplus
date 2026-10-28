@@ -888,31 +888,93 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  // Auto-login if user tapped the "Log In to HSG+" button link in WhatsApp (?login_phone=... or ?auth_phone=...)
+  // Auto-login if user tapped the "Log In to HSG+" button link in WhatsApp (?token=... / ?ott=... / ?login_phone=...)
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const autoPhone =
-        urlParams.get('login_phone') ||
-        urlParams.get('auth_phone') ||
-        urlParams.get('phone');
 
-      if (autoPhone && autoPhone.trim()) {
-        const cleanP = autoPhone.replace(/\D/g, '');
-        if (cleanP) {
-          loginWithWhatsApp(cleanP);
-          urlParams.delete('login_phone');
-          urlParams.delete('auth_phone');
-          urlParams.delete('phone');
-          const newQuery = urlParams.toString();
-          const newUrl = `${window.location.pathname}${
-            newQuery ? `?${newQuery}` : ''
-          }${window.location.hash}`;
-          window.history.replaceState({}, '', newUrl);
+    const checkUrlAuth = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        let hashQuery = '';
+        if (window.location.hash.includes('?')) {
+          hashQuery = window.location.hash.split('?')[1] || '';
         }
-      }
-    } catch (e) {}
+        const hashParams = new URLSearchParams(hashQuery);
+
+        const token =
+          searchParams.get('token') ||
+          searchParams.get('ott') ||
+          hashParams.get('token') ||
+          hashParams.get('ott');
+
+        if (token && token.trim()) {
+          const cleanToken = token.trim();
+          fetch(`${LIVE_WORKER_URL}/api/hsg-app/auth/consume-magic-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: cleanToken }),
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.success && data.user) {
+                loginWithWhatsApp(
+                  data.phone || data.user.phone_number,
+                  data.user.nickname,
+                  data.user
+                );
+                showToast(`Welcome back, ${data.user.nickname}!`);
+              } else if (data.error) {
+                showToast(data.error);
+              }
+            })
+            .catch((err) => {
+              console.error('[MagicToken] Consume error:', err);
+            })
+            .finally(() => {
+              // Strip token from address bar cleanly
+              searchParams.delete('token');
+              searchParams.delete('ott');
+              hashParams.delete('token');
+              hashParams.delete('ott');
+              const cleanSearch = searchParams.toString();
+              const cleanHash = window.location.hash.split('?')[0];
+              const newUrl = `${window.location.pathname}${
+                cleanSearch ? `?${cleanSearch}` : ''
+              }${cleanHash}`;
+              window.history.replaceState({}, '', newUrl);
+            });
+          return;
+        }
+
+        // Fallback for direct phone param
+        const autoPhone =
+          searchParams.get('login_phone') ||
+          searchParams.get('auth_phone') ||
+          searchParams.get('phone') ||
+          hashParams.get('login_phone');
+
+        if (autoPhone && autoPhone.trim()) {
+          const cleanP = autoPhone.replace(/\D/g, '');
+          if (cleanP) {
+            loginWithWhatsApp(cleanP);
+            searchParams.delete('login_phone');
+            searchParams.delete('auth_phone');
+            searchParams.delete('phone');
+            hashParams.delete('login_phone');
+            const newQuery = searchParams.toString();
+            const cleanHash = window.location.hash.split('?')[0];
+            const newUrl = `${window.location.pathname}${
+              newQuery ? `?${newQuery}` : ''
+            }${cleanHash}`;
+            window.history.replaceState({}, '', newUrl);
+          }
+        }
+      } catch (e) {}
+    };
+
+    checkUrlAuth();
+    window.addEventListener('focus', checkUrlAuth);
+    return () => window.removeEventListener('focus', checkUrlAuth);
   }, []);
 
   const logout = () => {

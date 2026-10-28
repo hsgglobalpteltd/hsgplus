@@ -75,6 +75,62 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<
     'activity' | 'account' | 'achievement'
   >('activity');
+  const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
+  const tabsStickyRef = useRef<HTMLDivElement | null>(null);
+
+  const handleSubTabChange = (tabId: 'activity' | 'account' | 'achievement') => {
+    if (!isAuthenticated && tabId !== 'activity') {
+      openLoginModal();
+      return;
+    }
+    setActiveSubTab(tabId);
+
+    // Keep floating pills docked at top and display the active tab from its top body
+    // with exact padding so it is never covered by the 83px header + pill tab
+    requestAnimationFrame(() => {
+      const scrollParent = tabsStickyRef.current?.closest('main') || document.querySelector('main');
+      if (scrollParent && tabsAnchorRef.current) {
+        const anchorRect = tabsAnchorRef.current.getBoundingClientRect();
+        const parentRect = scrollParent.getBoundingClientRect();
+        const exactDockTop = Math.max(0, anchorRect.top - parentRect.top + scrollParent.scrollTop);
+
+        // If user is scrolled down to or past the docked tabs:
+        if (scrollParent.scrollTop > exactDockTop - 10) {
+          scrollParent.scrollTo({
+            top: exactDockTop,
+            behavior: 'smooth',
+          });
+        }
+      }
+    });
+  };
+
+  const [isTabsStuck, setIsTabsStuck] = useState(false);
+
+  useEffect(() => {
+    const scrollParent =
+      tabsStickyRef.current?.closest('main') || document.querySelector('main');
+    if (!scrollParent) return;
+
+    const checkSticky = () => {
+      if (!tabsAnchorRef.current || !scrollParent) return;
+      const anchorRect = tabsAnchorRef.current.getBoundingClientRect();
+      const parentRect = scrollParent.getBoundingClientRect();
+      // tabsAnchorRef is placed right above the sticky element.
+      // When anchorRect.top <= parentRect.top, the sticky tabs are 100% docked at the top.
+      const stuck = anchorRect.top <= parentRect.top + 1;
+      setIsTabsStuck((prev) => (prev !== stuck ? stuck : prev));
+    };
+
+    checkSticky();
+    scrollParent.addEventListener('scroll', checkSticky, { passive: true });
+    window.addEventListener('resize', checkSticky, { passive: true });
+
+    return () => {
+      scrollParent.removeEventListener('scroll', checkSticky);
+      window.removeEventListener('resize', checkSticky);
+    };
+  }, []);
   const [walletActionTab, setWalletActionTab] = useState<'withdraw' | null>(
     null
   );
@@ -448,7 +504,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         const isCheckin = txType === 'event_reward' || titleLower.includes('check-in');
         list.push({
           id: `tx-event-${tx.id}`,
-          category: 'Reward',
+          category: isCheckin ? 'Reward' : 'Account',
           title: tx.title || (isCheckin ? 'Event Check-In Reward' : 'Event RSVP'),
           description:
             tx.description ||
@@ -456,7 +512,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               ? `Earned +${pts} pts for event check-in.`
               : 'Event activity recorded.'),
           timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: { label: isCheckin ? 'Checked-In' : 'Joined', variant: 'emerald' },
+          badge: { label: isCheckin ? 'Checked-In' : 'Joined', variant: isCheckin ? 'emerald' : 'blue' },
           iconType: 'check',
         });
       } else if (
@@ -730,9 +786,21 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       )
       .forEach((ev) => {
         const isCheckedIn = ev.user_status === 'checked_in';
+        const evTitleLower = (ev.title || '').toLowerCase().trim();
+        const alreadyAdded = list.some((it) => {
+          const itTitle = (it.title || '').toLowerCase();
+          const itDesc = (it.description || '').toLowerCase();
+          const itId = (it.id || '').toLowerCase();
+          return (
+            itId.includes(ev.id.toLowerCase()) ||
+            (evTitleLower && (itTitle.includes(evTitleLower) || itDesc.includes(evTitleLower)))
+          );
+        });
+        if (alreadyAdded) return;
+
         list.push({
           id: `ev-status-${ev.id}-${ev.user_status}`,
-          category: 'Reward',
+          category: isCheckedIn ? 'Reward' : 'Account',
           title: isCheckedIn
             ? `Event Checked-In: ${ev.title}`
             : `Event Joined: ${ev.title}`,
@@ -740,13 +808,13 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             ? `Checked in at ${ev.location || 'Event Venue'}${
                 Number(ev.reward_points || 0) > 0 ? ` (+${ev.reward_points} pts)` : ''
               }.`
-            : `RSVP confirmed for ${ev.title} at ${ev.location || 'Event Venue'}.`,
+            : `RSVP confirmed for ${ev.title}. Check in at venue to earn +${ev.reward_points || 0} pts.`,
           timestamp: Number(ev.date_timestamp || Date.now()),
           badge: {
             label: isCheckedIn ? 'Checked-In' : 'Joined',
             variant: isCheckedIn ? 'emerald' : 'blue',
           },
-          iconType: 'check',
+          iconType: isCheckedIn ? 'check' : 'receipt',
         });
       });
 
@@ -906,7 +974,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     const resolvedPaynow = paynow.trim() || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
     if (!resolvedPaynow) {
       showToast('Please enter your Singapore PayNow number to withdraw.');
-      setActiveSubTab('account');
+      handleSubTabChange('account');
       return;
     }
     // Open explicit confirmation modal (includes privacy consent & point charges preview)
@@ -921,6 +989,41 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     // Hide withdrawal form box after request
     setWalletActionTab(null);
   };
+
+  // Lazy load activities: first display is 8, load 8 on scroll down
+  const [visibleActivityCount, setVisibleActivityCount] = useState<number>(8);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (activeSubTab !== 'activity') return;
+    if (visibleActivityCount >= allActivities.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting) {
+          setVisibleActivityCount((prev) => Math.min(prev + 8, allActivities.length));
+        }
+      },
+      {
+        root: null,
+        rootMargin: '120px',
+        threshold: 0.1,
+      }
+    );
+
+    const el = loadMoreRef.current;
+    if (el) observer.observe(el);
+
+    return () => {
+      if (el) observer.unobserve(el);
+      observer.disconnect();
+    };
+  }, [activeSubTab, visibleActivityCount, allActivities.length]);
+
+  const visibleActivities = useMemo(() => {
+    return allActivities.slice(0, visibleActivityCount);
+  }, [allActivities, visibleActivityCount]);
 
   const formatActivityTime = (ts: number) => {
     const date = new Date(ts);
@@ -1022,7 +1125,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       </div>
 
       {/* MODERN WALLET CARD */}
-      <div className="w-full p-5 rounded-3xl bg-hsg-wallet-card text-white shadow-md">
+      <div className="w-full p-5 rounded-3xl bg-hsg-wallet-card text-white shadow-md relative z-10">
         <div className="flex items-center justify-between">
           <HsgLogo size="sm" />
           <button
@@ -1039,7 +1142,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         <div className="mt-4 grid grid-cols-2 gap-3 items-start">
           <button
             type="button"
-            onClick={() => onOpenTransactions ? onOpenTransactions('cashback') : setActiveSubTab('activity')}
+            onClick={() => onOpenTransactions ? onOpenTransactions('cashback') : handleSubTabChange('activity')}
             className="text-left group cursor-pointer transition active:scale-[0.98]"
             title="View Cashback Transaction History"
           >
@@ -1057,7 +1160,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
           <button
             type="button"
-            onClick={() => onOpenTransactions ? onOpenTransactions('points') : setActiveSubTab('activity')}
+            onClick={() => onOpenTransactions ? onOpenTransactions('points') : handleSubTabChange('activity')}
             className="text-right group cursor-pointer transition active:scale-[0.98]"
             title="View Points Transaction History"
           >
@@ -1240,39 +1343,58 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         </form>
       )}
 
-      {/* SUB-TABS PILL SWITCHER: Activity | Account | Achievements */}
-      <div className="w-full grid grid-cols-3 gap-1.5 p-1 rounded-full bg-white shadow-2xs">
-        {(
-          [
-            { id: 'activity', label: 'Activity' },
-            { id: 'account', label: 'Account' },
-            { id: 'achievement', label: 'Achievements' },
-          ] as const
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => {
-              if (!isAuthenticated && tab.id !== 'activity') {
-                openLoginModal();
-                return;
-              }
-              setActiveSubTab(tab.id);
-            }}
-            className={`h-9 rounded-full text-xs font-bold transition cursor-pointer ${
-              activeSubTab === tab.id
-                ? 'bg-[#141416] text-[#FFEA00]'
-                : 'text-zinc-500 hover:text-zinc-800'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* ZERO-HEIGHT ANCHOR FOR PRECISE DOCKING (Immune to sticky offsets & header heights) */}
+      <div ref={tabsAnchorRef} className="w-full h-0 -mb-5 pointer-events-none" />
+
+      {/* FLOATING PILL TABS WITH SOFT FADE TO ZERO AT BOTTOM EDGE */}
+      <div
+        ref={tabsStickyRef}
+        className="sticky top-0 z-20 -mx-5 px-5 pt-2 pb-3 pointer-events-auto"
+      >
+        {/* Soft fading backdrop: dynamically matches theme color, covers scrolling body content, and appears only when 100% stuck */}
+        <div
+          className={`absolute inset-x-0 top-0 bottom-0 pointer-events-none -z-10 transition-opacity duration-200 ${
+            isTabsStuck ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{
+            background:
+              'linear-gradient(to bottom, var(--hsg-color-1, #FFEA00) 0%, color-mix(in srgb, var(--hsg-color-1, #FFEA00) 60%, transparent) 55%, transparent 100%)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            maskImage:
+              'linear-gradient(to bottom, black 0%, black 65%, transparent 100%)',
+            WebkitMaskImage:
+              'linear-gradient(to bottom, black 0%, black 65%, transparent 100%)',
+          }}
+        />
+
+        <div className="w-full grid grid-cols-3 gap-2">
+          {(
+            [
+              { id: 'activity', label: 'Activity' },
+              { id: 'account', label: 'Account' },
+              { id: 'achievement', label: 'Achievements' },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleSubTabChange(tab.id)}
+              className={`h-10 rounded-full text-xs font-bold transition shadow-xs cursor-pointer select-none ${
+                activeSubTab === tab.id
+                  ? 'bg-[#141416] text-[#FFEA00] shadow-sm'
+                  : 'bg-white/95 hover:bg-white text-[#141416] shadow-2xs'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 1. ACCOUNT ACTIVITY HISTORY (All claims, settings, security & balance events) */}
       {activeSubTab === 'activity' && (
-        <div className="w-full space-y-3">
+        <div className="w-full space-y-3 min-h-[calc(100dvh-180px)] pt-2 pb-12 animate-in fade-in duration-200">
           <div className="flex items-center justify-between px-1">
             <div>
               <h3 className="text-xs font-bold text-zinc-900">Activity History</h3>
@@ -1298,7 +1420,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
           {allActivities.length > 0 ? (
             <div className="w-full space-y-2.5">
-              {allActivities.map((act) => (
+              {visibleActivities.map((act) => (
                 <div
                   key={act.id}
                   onClick={() => {
@@ -1344,6 +1466,27 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   </div>
                 </div>
               ))}
+
+              {/* Lazy Load Sentinel & Load More Trigger */}
+              {visibleActivityCount < allActivities.length ? (
+                <div ref={loadMoreRef} className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleActivityCount((prev) => Math.min(prev + 8, allActivities.length))}
+                    className="w-full h-10 rounded-2xl bg-white hover:bg-zinc-50 border border-zinc-200/80 text-xs font-bold text-zinc-700 shadow-2xs active:scale-[0.99] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />
+                    <span>Loading more activities...</span>
+                    <span className="text-[10px] text-zinc-400 font-normal">
+                      ({visibleActivities.length} of {allActivities.length})
+                    </span>
+                  </button>
+                </div>
+              ) : allActivities.length > 8 ? (
+                <div className="pt-2 text-center text-[11px] text-zinc-400 font-medium">
+                  All {allActivities.length} activities loaded
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="w-full p-8 rounded-3xl bg-white text-center text-xs text-zinc-400">
@@ -1359,7 +1502,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           onSubmit={handleSaveProfile}
           onFocus={handleFormFocus}
           onBlur={handleFormBlur}
-          className={`w-full p-5 rounded-3xl bg-white shadow-xs space-y-4 transition-all duration-200 ${
+          className={`w-full p-5 rounded-3xl bg-white shadow-xs space-y-4 transition-all duration-200 min-h-[calc(100dvh-180px)] animate-in fade-in mt-2 ${
             isInputFocused ? 'mb-80' : 'mb-36'
           }`}
         >
@@ -1499,7 +1642,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
       {/* 3. ACHIEVEMENTS SUB-VIEW */}
       {activeSubTab === 'achievement' && (
-        <div className="w-full space-y-4">
+        <div className="w-full space-y-4 min-h-[calc(100dvh-180px)] pt-2 pb-12 animate-in fade-in duration-200">
           {/* 1. CONTEST WINNER PRIZES TO CLAIM */}
           {userWinningPrizes.length > 0 && (
             <div className="w-full space-y-2.5">
@@ -1655,8 +1798,16 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 );
               })
             ) : (
-              <div className="w-full p-6 rounded-3xl bg-white text-center text-xs text-zinc-400">
-                No achievements available.
+              <div className="w-full py-16 px-6 rounded-3xl bg-white text-center space-y-3 shadow-2xs border border-zinc-200/60">
+                <div className="w-14 h-14 mx-auto rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400">
+                  <Trophy className="w-7 h-7 text-zinc-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-zinc-900">No achievements yet</div>
+                  <div className="text-xs text-zinc-500 max-w-xs mx-auto mt-1 leading-relaxed">
+                    Complete challenges, attend events, and refer friends to unlock badges and bonus points!
+                  </div>
+                </div>
               </div>
             )}
           </div>

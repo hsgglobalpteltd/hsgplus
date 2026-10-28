@@ -349,8 +349,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
       {contest ? (
         <div className="w-full space-y-4">
-          {/* Header Block: Countdown + Edge-to-Edge Posters (Zero Gap) */}
-          <div className="-mx-5 w-[calc(100%+2.5rem)] flex flex-col p-0 m-0 overflow-hidden">
+          {/* Header Block: Countdown + Edge-to-Edge Posters (Zero Gap between posters, with breathing room to description) */}
+          <div className="-mx-5 w-[calc(100%+2.5rem)] flex flex-col p-0 m-0 overflow-hidden pb-4">
             {/* 1. CONTEST COUNTDOWN TIMER (FULL WIDTH) */}
             {cd && (
               <div className="w-full px-5 py-3 bg-[#141416] text-white flex items-center justify-between text-xs shadow-xs">

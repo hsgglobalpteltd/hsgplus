@@ -486,7 +486,7 @@ const HsgMobileShell: React.FC = () => {
         <main
           ref={mainScrollRef}
           onScroll={handleMainScroll}
-          className="w-full flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar pb-4"
+          className="w-full flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar pb-4 scroll-smooth"
         >
           {route === 'home' ? (
             <HomePage

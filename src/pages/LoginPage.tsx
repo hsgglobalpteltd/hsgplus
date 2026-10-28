@@ -215,7 +215,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
       const currentOrigin =
         typeof window !== 'undefined'
           ? window.location.origin
-          : 'https://hsgplus.community';
+          : 'https://plus.hsgglobal.sg';
 
       const res = await fetch(`${WORKER_URL}/api/hsg-app/auth/whatsapp/init`, {
         method: 'POST',
