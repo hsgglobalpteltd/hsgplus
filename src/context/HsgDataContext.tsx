@@ -34,10 +34,10 @@ const INITIAL_DATABASE: HsgDatabaseSchema = {
         localStorage.getItem('hsg_theme_color_2')) ||
       '',
     referral_enabled: true,
-    referral_referrer_cashback: 5.0,
-    referral_referrer_points: 50,
-    referral_referee_cashback: 5.0,
-    referral_referee_points: 50,
+    referral_referrer_cashback: 0,
+    referral_referrer_points: 0,
+    referral_referee_cashback: 0,
+    referral_referee_points: 0,
   },
   brands: [],
   products: [],
@@ -57,6 +57,7 @@ const INITIAL_DATABASE: HsgDatabaseSchema = {
   announcements: [],
   highlights: [],
   merch_catalog: [],
+  merch_orders: [],
   achievements: [],
 };
 
@@ -200,6 +201,42 @@ export function clearPendingReferralCode(): void {
     localStorage.removeItem(REFERRAL_ATTR_KEY);
     sessionStorage.removeItem('hsg_pending_referral_code');
   } catch {}
+}
+
+/**
+ * Universal Wipe for Member Data:
+ * Clears ALL user-specific localStorage and sessionStorage keys in one go,
+ * strictly preserving app theme customization and marketing referral attribution.
+ */
+export function purgeUserStorage(): void {
+  if (typeof window === 'undefined') return;
+
+  const isPreserved = (key: string) => {
+    return (
+      key.startsWith('hsg_theme_') ||
+      key.startsWith('hsg_referral_') ||
+      key === 'hsg_auth_epoch_v5'
+    );
+  };
+
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && !isPreserved(key)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+    const pendingRef = sessionStorage.getItem('hsg_pending_referral_code');
+    sessionStorage.clear();
+    if (pendingRef) {
+      sessionStorage.setItem('hsg_pending_referral_code', pendingRef);
+    }
+  } catch (err) {
+    console.warn('[Storage] Purge error:', err);
+  }
 }
 
 const HsgDataContext = createContext<HsgDataContextValue | undefined>(undefined);
@@ -413,16 +450,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                   ? Boolean(stData.settings.referral_enabled)
                   : true,
               referral_referrer_cashback: Number(
-                stData.settings.referral_referrer_cashback ?? 5.0
+                stData.settings.referral_referrer_cashback ?? 0
               ),
               referral_referrer_points: Number(
-                stData.settings.referral_referrer_points ?? 50
+                stData.settings.referral_referrer_points ?? 0
               ),
               referral_referee_cashback: Number(
-                stData.settings.referral_referee_cashback ?? 5.0
+                stData.settings.referral_referee_cashback ?? 0
               ),
               referral_referee_points: Number(
-                stData.settings.referral_referee_points ?? 50
+                stData.settings.referral_referee_points ?? 0
               ),
             },
             merch_catalog: Array.isArray(stData.merch)
@@ -442,6 +479,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                   stock: Number(m.stock_qty || 0),
                 }))
               : prev.merch_catalog,
+            merch_orders: Array.isArray(stData.merch_orders)
+              ? stData.merch_orders
+              : prev.merch_orders || [],
           }));
         }
       }
@@ -462,12 +502,12 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      const authPhone = (localStorage.getItem('hsg_auth_phone') );
-      const authUserId = (localStorage.getItem('hsg_auth_user_id') );
-      if (authPhone || authUserId) {
+      const authPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
+      const authUserId = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_user_id') || '') : '';
+      if (authUserId || authPhone) {
         const qParam = authUserId
-          ? `user_id=${encodeURIComponent(authUserId)}`
-          : `phone=${encodeURIComponent(authPhone || '')}`;
+          ? `user_id=${encodeURIComponent(authUserId)}${authPhone ? `&phone=${encodeURIComponent(authPhone)}` : ''}`
+          : `phone=${encodeURIComponent(authPhone)}`;
         const uRes = await fetch(
           `${LIVE_WORKER_URL}/api/hsg-app/users/me?${qParam}`,
           fetchOpts
@@ -475,56 +515,28 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (uRes.ok) {
           const uData = await uRes.json();
           if (uData.user) {
+            if (uData.user.id) {
+              try { localStorage.setItem('hsg_auth_user_id', uData.user.id); } catch {}
+            }
+            if (uData.user.nickname) {
+              try { localStorage.setItem('hsg_auth_name', uData.user.nickname); } catch {}
+            }
             if (uData.user?.paynow || uData.user?.paynow_number) {
               try {
                 const pn = uData.user.paynow || uData.user.paynow_number;
                 if (pn && !pn.startsWith('...')) localStorage.setItem('hsg_auth_paynow', pn);
               } catch {}
             }
-            setDb((prev) => {
-              const pendingFromTxs = (prev.transactions || [])
-                .filter((tx) => tx.status === 'pending')
-                .reduce(
-                  (sum, tx) =>
-                    sum +
-                    (Number(
-                      tx.amount_cashback ?? tx.net_cashback ?? tx.amount ?? 0
-                    ) > 0
-                      ? Number(
-                          tx.amount_cashback ?? tx.net_cashback ?? tx.amount ?? 0
-                        )
-                      : 0),
-                  0
-                );
-              const pendingPtsFromTxs = (prev.transactions || [])
-                .filter((tx) => tx.status === 'pending')
-                .reduce(
-                  (sum, tx) =>
-                    sum +
-                    (Number(
-                      tx.amount_points ?? tx.net_points ?? tx.points ?? 0
-                    ) > 0
-                      ? Number(
-                          tx.amount_points ?? tx.net_points ?? tx.points ?? 0
-                        )
-                      : 0),
-                  0
-                );
-              return {
-                ...prev,
-                user: {
-                  ...uData.user,
-                  pending_balance: Math.max(
-                    Number(uData.user.pending_balance || 0),
-                    Number(pendingFromTxs.toFixed(2))
-                  ),
-                  pending_points: Math.max(
-                    Number(uData.user.pending_points || 0),
-                    pendingPtsFromTxs
-                  ),
-                },
-              };
-            });
+            setDb((prev) => ({
+              ...prev,
+              user: {
+                ...uData.user,
+                wallet_balance: Number(uData.user.wallet_balance || 0),
+                points_balance: Number(uData.user.points_balance || 0),
+                pending_balance: Number(uData.user.pending_balance || 0),
+                pending_points: Number(uData.user.pending_points || 0),
+              },
+            }));
           } else {
             // Live user record no longer exists in database -> purge session
             try {
@@ -543,51 +555,74 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  // Sync Live Transactions from dedicated database ledger
+  // Sync Live Transactions from dedicated database ledger (hsgplus_ledger)
   const syncLiveTransactions = async (phoneFilter?: string) => {
     try {
       const authPhone = phoneFilter || (localStorage.getItem('hsg_auth_phone') ) || '';
       const authUserId = db.user?.id || (localStorage.getItem('hsg_auth_user_id') ) || '';
+      if (!authUserId && !authPhone) return;
       const queryParam = authUserId
         ? `?user_id=${encodeURIComponent(authUserId)}`
-        : authPhone
-        ? `?user_phone=${encodeURIComponent(authPhone)}`
-        : '';
-      const res = await fetch(`${LIVE_WORKER_URL}/api/hsg-app/transactions${queryParam}`, {
-        cache: 'no-store',
-      });
+        : `?user_phone=${encodeURIComponent(authPhone)}`;
+      const [res, ordRes] = await Promise.all([
+        fetch(`${LIVE_WORKER_URL}/api/hsg-app/transactions${queryParam}`, {
+          cache: 'no-store',
+        }),
+        fetch(`${LIVE_WORKER_URL}/api/hsg-app/merch-orders`, {
+          cache: 'no-store',
+        }).catch(() => null),
+      ]);
       if (res.ok) {
         const data = await res.json();
+        let liveOrders: any[] = [];
+        if (ordRes && ordRes.ok) {
+          try {
+            const ordData = await ordRes.json();
+            if (Array.isArray(ordData.orders)) {
+              liveOrders = ordData.orders;
+            }
+          } catch (_) {}
+        }
         if (Array.isArray(data.transactions)) {
           const txs = data.transactions.map((t: any) => ({
             ...t,
-            amount: Number(t.amount_cashback ?? t.net_cashback ?? t.cashback_amount ?? t.amount ?? 0),
-            points: Number(t.amount_points ?? t.net_points ?? t.points ?? 0),
+            amount: Number(t.net_cashback ?? t.amount_cashback ?? t.cashback_amount ?? t.amount ?? 0),
+            points: Number(t.net_points ?? t.amount_points ?? t.points ?? 0),
             timestamp: Number(t.created_at || t.timestamp || Date.now()),
           }));
 
-          const pendingCashFromTxs = txs
-            .filter((t: any) => t.status === 'pending')
-            .reduce((sum: number, t: any) => sum + (t.amount > 0 ? t.amount : 0), 0);
+          let walletCash = 0;
+          let walletPts = 0;
+          let pendingCashFromTxs = 0;
+          let pendingPtsFromTxs = 0;
 
-          const pendingPtsFromTxs = txs
-            .filter((t: any) => t.status === 'pending')
-            .reduce((sum: number, t: any) => sum + (t.points > 0 ? t.points : 0), 0);
+          txs.forEach((t: any) => {
+            const st = String(t.status || 'completed').toLowerCase();
+            if (st === 'rejected' || st === 'declined' || st === 'cancelled') return;
+            const c = Number(t.net_cashback ?? t.amount ?? 0);
+            const p = Number(t.net_points ?? t.points ?? 0);
+            if (st === 'pending' || st === 'requested' || st === 'pending_payout') {
+              if (c > 0) pendingCashFromTxs += c;
+              else if (c < 0) walletCash += c;
+              if (p > 0) pendingPtsFromTxs += p;
+              else if (p < 0) walletPts += p;
+            } else {
+              walletCash += c;
+              walletPts += p;
+            }
+          });
 
           setDb((prev) => ({
             ...prev,
             transactions: txs,
+            merch_orders: liveOrders.length > 0 ? liveOrders : prev.merch_orders || [],
             user: prev.user
               ? {
                   ...prev.user,
-                  pending_balance: Math.max(
-                    Number(prev.user.pending_balance || 0),
-                    Number(pendingCashFromTxs.toFixed(2))
-                  ),
-                  pending_points: Math.max(
-                    Number(prev.user.pending_points || 0),
-                    pendingPtsFromTxs
-                  ),
+                  wallet_balance: Math.max(0, Number(walletCash.toFixed(2))),
+                  points_balance: Math.max(0, Math.round(walletPts)),
+                  pending_balance: Math.max(0, Number(pendingCashFromTxs.toFixed(2))),
+                  pending_points: Math.max(0, Math.round(pendingPtsFromTxs)),
                 }
               : prev.user,
           }));
@@ -742,8 +777,15 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     liveUserObj?: UserAccount
   ) => {
     const cleanPhone = (phoneInput || '').replace(/\D/g, '');
-    const resolvedName = liveUserObj?.nickname || nameInput || (cleanPhone ? `Member_${cleanPhone.slice(-4)}` : 'HSG Member');
-    const assignedId = liveUserObj?.id || liveUserObj?.user_id || (localStorage.getItem('hsg_auth_user_id') ) || '';
+    const prevAuthPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
+
+    // If logging in with a different phone number, universally purge all previous user cache!
+    if (prevAuthPhone && prevAuthPhone !== cleanPhone) {
+      purgeUserStorage();
+    }
+
+    const assignedId = liveUserObj?.id || liveUserObj?.user_id || '';
+    const resolvedName = liveUserObj?.nickname || nameInput || (cleanPhone ? `HSG Member ${cleanPhone.slice(-4)}` : 'HSG Member');
     const userRecord: UserAccount = liveUserObj || {
       id: assignedId || undefined,
       user_id: assignedId || undefined,
@@ -774,6 +816,8 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.setItem('hsg_auth_name', userRecord.nickname);
       if (userRecord.id) {
         localStorage.setItem('hsg_auth_user_id', userRecord.id);
+      } else {
+        localStorage.removeItem('hsg_auth_user_id');
       }
     } catch (e) {}
 
@@ -804,12 +848,14 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // Auto-claim pending referral if member arrived with ?ref= link
     try {
-      const pendingRef = sessionStorage.getItem('hsg_pending_referral_code');
+      const pendingRef = getPendingReferralCode();
+      const currentUserId = userRecord.id || (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '';
       if (pendingRef && !userRecord.referred_by) {
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/referral/claim`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            user_id: currentUserId,
             phone: cleanPhone,
             referral_code: pendingRef,
           }),
@@ -817,18 +863,21 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           .then((r) => r.json())
           .then((claimData) => {
             if (claimData.ok) {
-              sessionStorage.removeItem('hsg_pending_referral_code');
+              clearPendingReferralCode();
               showToast(
                 `🎉 Referral bonus credited! +$${Number(
                   claimData.reward?.referee_cashback || 0
                 ).toFixed(2)} & +${claimData.reward?.referee_points || 0} pts`
               );
               syncLiveUsers();
+              syncLiveTransactions();
             }
           })
           .catch(() => {});
       }
     } catch (e) {}
+
+    syncLiveTransactions(cleanPhone);
 
     if (pendingAuthAction) {
       const act = pendingAuthAction;
@@ -867,13 +916,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const logout = () => {
-    try {
-      localStorage.removeItem('hsg_auth_phone');
-      localStorage.removeItem('hsg_auth_user_id');
-      localStorage.removeItem('hsg_auth_name');
-      localStorage.removeItem('hsg_auth_paynow');
-      sessionStorage.removeItem('hsg_pending_referral_code');
-    } catch (e) {}
+    purgeUserStorage();
     setDb((prev) => ({
       ...prev,
       user: null,
@@ -1316,20 +1359,15 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       return { ok: false, message: msg };
     }
 
-    const storedAuthPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
-    const cleanPhone = (storedAuthPhone || db.user.phone_number || '').replace(/\D/g, '').replace(/^65/, '');
     const localPaynow = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '').trim() : '';
 
     let effectivePaynow = (overridePaynow?.trim()) || localPaynow || '';
     if (!effectivePaynow && db.user.paynow && !db.user.paynow.startsWith('...') && db.user.paynow.length !== 64) {
       effectivePaynow = db.user.paynow.trim();
     }
-    if (!effectivePaynow) {
-      effectivePaynow = cleanPhone;
-    }
 
     if (!effectivePaynow) {
-      const msg = 'Please set your PayNow number in Account details.';
+      const msg = 'Please enter your Singapore PayNow number in Account details.';
       showToast(msg);
       return { ok: false, message: msg };
     }
@@ -1582,13 +1620,18 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         ? (payload.deliveryAddress || db.user.address || '').trim()
         : db.user.address;
 
+    const unmaskedPhone =
+      (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_phone') || '' : '') ||
+      db.user?.phone_number ||
+      '';
+
     try {
       const res = await fetch(`${LIVE_WORKER_URL}/api/hsg-app/merch-orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: db.user.id || '',
-          user_phone: db.user.phone_number,
+          user_phone: unmaskedPhone,
           user_nickname: db.user.nickname || 'Member',
           items: formattedOrderItems,
           fulfillment: payload.fulfillment,
@@ -1636,6 +1679,22 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         timestamp: Date.now(),
       };
 
+      const newLiveOrder = {
+        id: orderId,
+        user_id: db.user.id || '',
+        user_phone: db.user.phone_number,
+        user_nickname: db.user.nickname || 'Member',
+        items: formattedOrderItems,
+        fulfillment: payload.fulfillment,
+        fulfillment_method: payload.fulfillment,
+        delivery_address: confirmedAddress,
+        delivery_fee: payload.fulfillment === 'delivery' ? Number(db.settings.delivery_fee || 0) : 0,
+        total_cash: totalCashRequired,
+        total_points: totalPointsRequired,
+        status: 'pending',
+        created_at: Date.now(),
+      };
+
       setDb((prev) => ({
         ...prev,
         user: updatedUser,
@@ -1643,6 +1702,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           u.phone_number === updatedUser.phone_number ? updatedUser : u
         ),
         history: [orderRecord, ...prev.history],
+        merch_orders: [newLiveOrder, ...(prev.merch_orders || [])],
       }));
 
       // Background re-fetch to sync fresh transaction and order ledger
@@ -2151,12 +2211,12 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         const updated = {
           ...prev.user,
           wallet_balance: Number(
-            data.referee?.wallet_balance ?? prev.user.wallet_balance
+            data.user?.wallet_balance ?? data.referee?.wallet_balance ?? prev.user.wallet_balance
           ),
           points_balance: Number(
-            data.referee?.points_balance ?? prev.user.points_balance ?? 0
+            data.user?.points_balance ?? data.referee?.points_balance ?? prev.user.points_balance ?? 0
           ),
-          referred_by: cleanCode,
+          referred_by: data.user?.referred_by || cleanCode,
         };
         const bonusCash = Number(data.reward?.referee_cashback || 0);
         const bonusPts = Number(data.reward?.referee_points || 0);
@@ -2173,7 +2233,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           user: updated,
           history: [refHist, ...prev.history],
           users_list: prev.users_list.map((u) =>
-            u.phone_number === updated.phone_number ? updated : u
+            u.id === updated.id || u.phone_number === updated.phone_number ? updated : u
           ),
         };
       });
@@ -2188,6 +2248,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         ).toFixed(2)} & +${data.reward?.referee_points || 0} pts`
       );
       syncLiveUsers();
+      syncLiveTransactions();
       return {
         ok: true,
         message: data.message || 'Referral applied!',

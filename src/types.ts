@@ -466,6 +466,34 @@ export interface HsgSystemSettings {
   referral_referee_points?: number;
 }
 
+export interface MerchOrderItem {
+  merch_id?: string;
+  name: string;
+  qty: number;
+  points?: number;
+  cash?: number;
+  image_url?: string;
+  payWith?: string;
+}
+
+export interface MerchOrderRecord {
+  id: string;
+  user_id?: string;
+  user_phone?: string;
+  user_nickname?: string;
+  items?: MerchOrderItem[];
+  fulfillment_method?: 'delivery' | 'collect' | string;
+  fulfillment?: 'delivery' | 'collect' | string;
+  delivery_address?: string;
+  delivery_fee?: number;
+  total_cash?: number;
+  total_points?: number;
+  pay_mode?: string;
+  status: 'pending' | 'preparing' | 'ready' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | string;
+  created_at: number;
+  updated_at?: number;
+}
+
 export interface HsgDatabaseSchema {
   settings: HsgSystemSettings;
   brands: HsgBrand[];
@@ -486,6 +514,7 @@ export interface HsgDatabaseSchema {
   announcements: HsgAnnouncement[];
   highlights: PostHighlight[];
   merch_catalog: MerchItem[];
+  merch_orders: MerchOrderRecord[];
   achievements: AchievementItem[];
 }
 

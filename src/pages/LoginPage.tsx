@@ -473,6 +473,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
                 )}
               </button>
 
+              {/* NON-SINGAPORE OPERATION NOTICE */}
+              {selectedCountry.code !== 'SG' && (
+                <div className="w-full py-2 px-3 rounded-xl bg-amber-50/90 border border-amber-200/70 text-amber-900 text-center text-[11px] font-medium leading-snug animate-in fade-in duration-150">
+                  <span>HSG+ operates in Singapore only.</span>
+                </div>
+              )}
+
               {/* TEXT BUTTON BELOW LOGIN WHATSAPP BUTTON */}
               {onClose && (
                 <button
@@ -481,7 +488,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
                   className="text-xs font-medium text-zinc-500 hover:text-zinc-800 transition cursor-pointer text-center group flex flex-col items-center gap-0.5 mt-4"
                 >
                   <span>I will login later..</span>
-                  <span className="text-[#EC008C] font-bold underline group-hover:text-[#141416]">
+                  <span className="text-[#EC008C] font-medium group-hover:text-[#141416]">
                     Click here to back to frontpage
                   </span>
                 </button>

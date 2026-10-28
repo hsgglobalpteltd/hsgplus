@@ -56,14 +56,13 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
   const [totalBonusPts, setTotalBonusPts] = useState(0);
 
   const cleanPhone = (db.user?.phone_number || '').replace(/\D/g, '');
-  const userCode =
-    db.user?.referral_code ||
-    (cleanPhone.length >= 4 ? `HSG${cleanPhone.slice(-4).toUpperCase()}` : 'HSG+');
+  const userId = db.user?.id || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_user_id') || '') : '');
+  const userCode = db.user?.referral_code || '------';
 
-  const refCashback = Number(db.settings.referral_referrer_cashback ?? 5.0);
-  const refPoints = Number(db.settings.referral_referrer_points ?? 50);
-  const refereeCashback = Number(db.settings.referral_referee_cashback ?? 5.0);
-  const refereePoints = Number(db.settings.referral_referee_points ?? 50);
+  const refCashback = Number(db.settings.referral_referrer_cashback ?? 0);
+  const refPoints = Number(db.settings.referral_referrer_points ?? 0);
+  const refereeCashback = Number(db.settings.referral_referee_cashback ?? 0);
+  const refereePoints = Number(db.settings.referral_referee_points ?? 0);
 
   // 3-Day Referral Welcome Bonus window (vanishes if claimed OR after 3 days)
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
@@ -72,17 +71,20 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
   const isReferralClaimed = Boolean(db.user?.referred_by);
   const canClaimReferral = Boolean(!isReferralClaimed && isWithin3Days);
 
-  // Fetch live friends who joined under user
+  // Fetch live friends who joined under user (by user_id PK)
   useEffect(() => {
     let isMounted = true;
     const fetchFriends = async () => {
-      if (!cleanPhone) {
+      if (!userId && !cleanPhone) {
         setLoadingFriends(false);
         return;
       }
       try {
+        const q = userId
+          ? `user_id=${encodeURIComponent(userId)}`
+          : `user_phone=${encodeURIComponent(cleanPhone)}`;
         const res = await fetch(
-          `${WORKER_URL}/api/hsg-app/referral/friends?user_phone=${encodeURIComponent(cleanPhone)}`
+          `${WORKER_URL}/api/hsg-app/referral/friends?${q}`
         );
         if (res.ok) {
           const data = await res.json();
@@ -124,8 +126,8 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
           .map((tx) => ({
             id: tx.id,
             name: 'Community Friend',
-            cashback: Number((tx as any).net_cashback ?? (tx as any).amount_cashback ?? (tx as any).amount ?? 5.0),
-            points: Number((tx as any).net_points ?? (tx as any).amount_points ?? ((tx as any).points > 0 ? (tx as any).points : 50)),
+            cashback: Number((tx as any).net_cashback ?? (tx as any).amount_cashback ?? (tx as any).amount ?? refCashback),
+            points: Number((tx as any).net_points ?? (tx as any).amount_points ?? ((tx as any).points > 0 ? (tx as any).points : refPoints)),
             joined_at: Number(tx.created_at || Date.now()),
           }));
         setFriends(txFriends);
@@ -279,7 +281,7 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
             onClick={() => setShowClaimModal(true)}
             className="h-9 px-4 rounded-full bg-[#141416] text-[#FFEA00] font-black text-xs shrink-0 shadow-sm active:scale-95 transition cursor-pointer"
           >
-            Claim $5 Now!
+            Claim {refereeCashback > 0 ? `$${refereeCashback.toFixed(2)}` : 'Reward'} Now!
           </button>
         </div>
       )}

@@ -97,7 +97,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
       } catch (err) {
         console.warn('Camera scan failed', err);
         showToast(
-          'Camera access unavailable. You can tap Quick Verify below to check in.'
+          'Camera access unavailable. Please allow camera permissions to scan the event QR code.'
         );
         setIsScanning(false);
       }
@@ -852,35 +852,14 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                           <p className="text-xs text-zinc-300">
                             Scan event QR poster stationed at the venue entrance
                           </p>
-                          <div className="flex gap-2 pt-1">
+                          <div className="pt-1">
                             <button
                               type="button"
                               onClick={startCameraScan}
-                              className="flex-1 h-10 rounded-full bg-[#EC008C] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer"
+                              className="w-full h-10 rounded-full bg-[#EC008C] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer"
                             >
                               <Camera className="w-4 h-4" />
                               <span>Scan with Camera</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const res = await checkInEvent(
-                                  activeEvent.id,
-                                  activeEvent.event_qr_code
-                                );
-                                if (res.ok) {
-                                  setCheckInRewardSuccess({
-                                    rewardPoints:
-                                      res.reward_points ||
-                                      activeEvent.reward_points ||
-                                      0,
-                                    eventTitle: activeEvent.title,
-                                  });
-                                }
-                              }}
-                              className="px-4 h-10 rounded-full bg-white/10 text-white font-bold text-xs active:scale-95 transition cursor-pointer"
-                            >
-                              Quick Verify
                             </button>
                           </div>
                         </div>

@@ -8,6 +8,7 @@ import {
   ShoppingBag,
   Trash2,
   Truck,
+  ShieldAlert,
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { MerchItem } from '../types';
@@ -41,6 +42,9 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
   const [pickupConfirmed, setPickupConfirmed] = useState<boolean>(true);
   const [lastOrderMessage, setLastOrderMessage] = useState<string>('');
   const [isPlacingOrder, setIsPlacingOrder] = useState<boolean>(false);
+  const [showPrivacyConfirm, setShowPrivacyConfirm] = useState<boolean>(false);
+
+  const isPrivacyOn = Boolean(db.user?.privacy?.mode ?? db.user?.privacy_mode ?? true);
 
   const userPts = isAuthenticated && db.user
     ? Number(db.user?.points_balance || 0)
@@ -197,12 +201,12 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
     };
   }, [cartList, fulfillment, deliveryFee, userPts, userCash]);
 
-  const handleConfirmCheckout = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeOrderCheckout = async () => {
     if (cartList.length === 0 || isPlacingOrder) return;
     if (fulfillment === 'collect' && !pickupConfirmed) return;
 
     setIsPlacingOrder(true);
+    setShowPrivacyConfirm(false);
     try {
       const res = await checkoutRedeemCart({
         items: cartList.map((c) => ({
@@ -222,6 +226,19 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
     } finally {
       setIsPlacingOrder(false);
     }
+  };
+
+  const handleConfirmCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cartList.length === 0 || isPlacingOrder) return;
+    if (fulfillment === 'collect' && !pickupConfirmed) return;
+
+    if (isPrivacyOn) {
+      setShowPrivacyConfirm(true);
+      return;
+    }
+
+    await executeOrderCheckout();
   };
 
   return (
@@ -696,6 +713,49 @@ export const RedeemShopPage: React.FC<RedeemShopPageProps> = ({ onBack }) => {
               {totals.points === 0 && totals.totalCash === 0 ? '0 pts' : ''} →
             </span>
           </button>
+        </div>
+      )}
+      {/* PRIVACY SHARING CONFIRMATION MODAL */}
+      {showPrivacyConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-zinc-100 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-[#141416]">
+                  Confirm Order &amp; Delivery Phone
+                </h3>
+                <p className="text-[11px] text-zinc-500">
+                  Privacy mode active
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-zinc-700 leading-relaxed">
+              Your phone number will be shared to HSG+ for delivery purpose.
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isPlacingOrder}
+                onClick={() => setShowPrivacyConfirm(false)}
+                className="flex-1 h-11 rounded-full border border-zinc-200 bg-white hover:bg-zinc-50 font-bold text-xs text-zinc-700 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isPlacingOrder}
+                onClick={executeOrderCheckout}
+                className="flex-1 h-11 rounded-full bg-[#EC008C] text-white hover:bg-[#d4007d] font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center"
+              >
+                {isPlacingOrder ? 'Submitting...' : 'Submit Order'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

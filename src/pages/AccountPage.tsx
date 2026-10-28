@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { HsgLogo } from '../components/HsgLogo';
+import { MerchOrderRecord } from '../types';
 
 interface AccountPageProps {
   onBack: () => void;
@@ -41,9 +42,17 @@ interface ActivityItem {
   timestamp: number;
   badge?: {
     label: string;
-    variant: 'amber' | 'emerald' | 'rose' | 'blue' | 'zinc';
+    variant: 'amber' | 'emerald' | 'rose' | 'blue' | 'zinc' | 'purple' | 'indigo';
   };
   iconType: 'receipt' | 'settings' | 'wallet' | 'gift' | 'shield' | 'check' | 'alert' | 'order';
+  orderId?: string;
+  orderData?: MerchOrderRecord;
+  orderProgress?: {
+    step: number; // 1: Order Placed, 2: Preparing, 3: Delivered
+    statusText: string;
+    fulfillment: string;
+    deliveryAddress?: string;
+  };
 }
 
 export const AccountPage: React.FC<AccountPageProps> = ({
@@ -60,6 +69,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     logout,
     isAuthenticated,
     openLoginModal,
+    showToast,
   } = useHsgData();
 
   const [activeSubTab, setActiveSubTab] = useState<
@@ -137,9 +147,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     ? availablePts + pendingPts
     : MOCK_TOTAL_PTS;
 
-  // Authentication phone resolution for Singapore PayNow default proxy
+  // Authentication phone resolution for member WhatsApp identity
   const storedAuthPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
-  const cleanDefaultPhone = storedAuthPhone.replace(/\D/g, '').replace(/^65/, '');
 
   // Account fields (Phone Number PK, Nickname, PayNow, Social Usernames, Privacy)
   const [nickname, setNickname] = useState(db.user?.nickname || '');
@@ -147,8 +156,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     const uPn = db.user?.paynow || (db.user as any)?.paynow_number || '';
     if (uPn && uPn.length !== 64 && !uPn.startsWith('...')) return uPn;
     const localPn = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '';
-    if (localPn) return localPn;
-    return cleanDefaultPhone || '';
+    return localPn || '';
   });
   const [privacyMode, setPrivacyMode] = useState<boolean>(() => db.user?.privacy_mode ?? db.user?.privacy?.mode ?? true);
   const [tt, setTt] = useState(db.user?.socials?.tt || '');
@@ -156,6 +164,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [thread, setThread] = useState(db.user?.socials?.thread || '');
   const [ig, setIg] = useState(db.user?.socials?.ig || '');
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [selectedReceiptOrder, setSelectedReceiptOrder] = useState<MerchOrderRecord | null>(null);
 
   // Smoothly center-scroll any focused input into the active visible window
   const handleScrollInputToCenter = (target: HTMLElement | null) => {
@@ -230,7 +239,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           setPaynow(uPn);
         } else if (!paynow) {
           const localPn = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '';
-          setPaynow(localPn || cleanDefaultPhone || '');
+          setPaynow(localPn || '');
         }
         if (db.user.privacy_mode !== undefined) {
           setPrivacyMode(db.user.privacy_mode);
@@ -298,112 +307,476 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     }
 
     const list: ActivityItem[] = [...localActivities];
+    const currentUserId =
+      db.user?.id ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('hsg_auth_user_id') || ''
+        : '');
 
-    // 1. Claims activity (submitted, approved, rejected)
-    (db.cashback_claims || []).forEach((c) => {
-      const claimAmt = Number(c.cashback_amount ?? c.receipt_amount ?? 0);
-      const isApproved = c.status === 'approved' || c.status === 'credited';
-      const isRejected = c.status === 'rejected';
+    // 1. Claims activity (submitted, approved, rejected) — strictly filtered by user_id
+    (db.cashback_claims || [])
+      .filter((c) => !currentUserId || !c.user_id || c.user_id === currentUserId)
+      .forEach((c) => {
+        const claimAmt = Number(c.cashback_amount ?? c.receipt_amount ?? 0);
+        const isApproved = c.status === 'approved' || c.status === 'credited';
+        const isRejected = c.status === 'rejected';
 
-      if (isApproved) {
-        list.push({
-          id: `claim-approved-${c.id}`,
-          category: 'Receipt Claim',
-          title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Approved`,
-          description: `Cashback +${claimAmt.toFixed(2)} verified and credited to wallet balance.`,
-          timestamp: Number(c.timestamp || Date.now() - 3600000),
-          badge: { label: 'Verified', variant: 'emerald' },
-          iconType: 'check',
-        });
-      } else if (isRejected) {
-        list.push({
-          id: `claim-rejected-${c.id}`,
-          category: 'Receipt Claim',
-          title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Declined`,
-          description: c.rejection_reason || 'Receipt could not be verified. Please check retail receipt clarity.',
-          timestamp: Number(c.timestamp || Date.now() - 3600000),
-          badge: { label: 'Declined', variant: 'rose' },
-          iconType: 'alert',
-        });
-      } else {
-        list.push({
-          id: `claim-pending-${c.id}`,
-          category: 'Receipt Claim',
-          title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Submitted`,
-          description: `Receipt uploaded for verification (Est. +${claimAmt.toFixed(2)} cashback).`,
-          timestamp: Number(c.timestamp || Date.now() - 7200000),
-          badge: { label: 'Pending Verify', variant: 'amber' },
-          iconType: 'receipt',
-        });
-      }
-    });
+        if (isApproved) {
+          list.push({
+            id: `claim-approved-${c.id}`,
+            category: 'Receipt Claim',
+            title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Approved`,
+            description: `Cashback +$${claimAmt.toFixed(2)} verified and credited to wallet balance.`,
+            timestamp: Number(c.timestamp || Date.now() - 3600000),
+            badge: { label: 'Verified', variant: 'emerald' },
+            iconType: 'check',
+          });
+        } else if (isRejected) {
+          list.push({
+            id: `claim-rejected-${c.id}`,
+            category: 'Receipt Claim',
+            title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Declined`,
+            description:
+              c.rejection_reason ||
+              'Receipt could not be verified. Please check retail receipt clarity.',
+            timestamp: Number(c.timestamp || Date.now() - 3600000),
+            badge: { label: 'Declined', variant: 'rose' },
+            iconType: 'alert',
+          });
+        } else {
+          list.push({
+            id: `claim-pending-${c.id}`,
+            category: 'Receipt Claim',
+            title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Submitted`,
+            description: `Receipt uploaded for verification (Est. +$${claimAmt.toFixed(2)} cashback).`,
+            timestamp: Number(c.timestamp || Date.now() - 7200000),
+            badge: { label: 'Pending Verify', variant: 'amber' },
+            iconType: 'receipt',
+          });
+        }
+      });
 
-    // 2. Transactions activity (withdrawals, shop redemptions, referral bonuses)
+    // 2. Transactions activity from hsgplus_ledger (withdrawals, referrals, contests, events, shop redemptions)
     (db.transactions || []).forEach((tx) => {
-      const amt = Number(tx.amount_cashback ?? tx.cashback_amount ?? tx.amount ?? 0);
+      const amt = Number(
+        tx.net_cashback ?? tx.amount_cashback ?? tx.cashback_amount ?? tx.amount ?? 0
+      );
+      const pts = Number(tx.net_points ?? tx.amount_points ?? tx.points ?? 0);
+      const txType = String(tx.type || '').toLowerCase();
+      const txStatus = String(tx.status || 'completed').toLowerCase();
       const titleLower = (tx.title || tx.description || '').toLowerCase();
 
       if (
-        (tx.type === 'withdrawal' || (titleLower.includes('withdraw') && !titleLower.includes('fee'))) &&
-        tx.type !== 'withdrawal_fee' &&
-        Math.abs(amt) > 0
+        (txType === 'withdrawal' ||
+          (titleLower.includes('withdraw') && !titleLower.includes('fee'))) &&
+        txType !== 'withdrawal_fee' &&
+        (Math.abs(amt) > 0 || Math.abs(pts) > 0)
       ) {
+        const isPending =
+          txStatus === 'pending' ||
+          txStatus === 'requested' ||
+          txStatus === 'pending_payout';
+        const isRejected = txStatus === 'rejected' || txStatus === 'declined';
         list.push({
           id: `tx-withdraw-${tx.id}`,
           category: 'Withdrawal',
-          title: 'PayNow Withdrawal',
-          description: tx.status === 'pending' || tx.status === 'requested'
+          title: isRejected ? 'PayNow Withdrawal Declined' : 'PayNow Withdrawal',
+          description: isRejected
+            ? tx.description ||
+              `Withdrawal request of $${Math.abs(amt).toFixed(2)} was declined and refunded.`
+            : isPending
             ? `Withdrawal request of $${Math.abs(amt).toFixed(2)} is pending Admin review.`
             : `PayNow transfer of $${Math.abs(amt).toFixed(2)} successfully sent.`,
           timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: tx.status === 'pending' || tx.status === 'requested'
+          badge: isRejected
+            ? { label: 'Declined', variant: 'rose' }
+            : isPending
             ? { label: 'Processing', variant: 'amber' }
             : { label: 'Completed', variant: 'emerald' },
-          iconType: 'wallet',
+          iconType: isRejected ? 'alert' : 'wallet',
         });
-      } else if (titleLower.includes('referral') || tx.type === 'referral') {
+      } else if (txType.startsWith('referral') || titleLower.includes('referral')) {
+        const isWelcome = txType === 'referral_welcome' || titleLower.includes('welcome');
+        const rewardParts: string[] = [];
+        if (amt > 0) rewardParts.push(`+$${amt.toFixed(2)}`);
+        if (pts > 0) rewardParts.push(`+${pts} pts`);
         list.push({
           id: `tx-referral-${tx.id}`,
           category: 'Reward',
-          title: 'Friend Referral Bonus',
-          description: `Reward credited for inviting friends to HSG+ Community.`,
+          title: isWelcome ? 'Referral Welcome Bonus' : 'Friend Referral Bonus',
+          description:
+            tx.description ||
+            `Reward credited (${rewardParts.join(' & ') || 'Bonus'}) in HSG+ Community.`,
           timestamp: Number(tx.created_at || Date.now() - 86400000),
           badge: { label: 'Rewarded', variant: 'emerald' },
           iconType: 'gift',
         });
-      } else if (titleLower.includes('redeem') || titleLower.includes('order') || titleLower.includes('shop')) {
+      } else if (
+        txType === 'contest_entry' ||
+        txType === 'contest_prize' ||
+        titleLower.includes('contest')
+      ) {
+        const isPrize = txType === 'contest_prize' || titleLower.includes('prize');
+        const isRejected = txStatus === 'rejected' || txStatus === 'declined';
+        const isPending = txStatus === 'pending' || txStatus === 'submitted';
         list.push({
-          id: `tx-shop-${tx.id}`,
-          category: 'Order',
-          title: 'HSG+ Merch Redemption',
-          description: `${tx.title || 'Redeemed merchandise item'} using reward points.`,
+          id: `tx-contest-${tx.id}`,
+          category: 'Reward',
+          title: isPrize
+            ? tx.title || 'Contest Winner Prize Claimed'
+            : tx.title || 'Contest Entry',
+          description:
+            tx.description ||
+            (pts > 0
+              ? `Earned +${pts} pts from contest participation.`
+              : amt > 0
+              ? `Earned +$${amt.toFixed(2)} from contest prize.`
+              : 'Contest participation recorded.'),
           timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: { label: 'Order Placed', variant: 'blue' },
-          iconType: 'order',
+          badge: isRejected
+            ? { label: 'Declined', variant: 'rose' }
+            : isPending
+            ? { label: 'Pending Verify', variant: 'amber' }
+            : { label: isPrize ? 'Winner' : 'Verified', variant: 'emerald' },
+          iconType: isRejected ? 'alert' : 'gift',
         });
+      } else if (
+        txType === 'event_rsvp' ||
+        txType === 'event_reward' ||
+        titleLower.includes('event')
+      ) {
+        const isCheckin = txType === 'event_reward' || titleLower.includes('check-in');
+        list.push({
+          id: `tx-event-${tx.id}`,
+          category: 'Reward',
+          title: tx.title || (isCheckin ? 'Event Check-In Reward' : 'Event RSVP'),
+          description:
+            tx.description ||
+            (pts > 0
+              ? `Earned +${pts} pts for event check-in.`
+              : 'Event activity recorded.'),
+          timestamp: Number(tx.created_at || Date.now() - 86400000),
+          badge: { label: isCheckin ? 'Checked-In' : 'Joined', variant: 'emerald' },
+          iconType: 'check',
+        });
+      } else if (
+        txType === 'shop_order' ||
+        titleLower.includes('redeem') ||
+        titleLower.includes('order') ||
+        titleLower.includes('shop')
+      ) {
+        // Will be matched and rendered from live merch_orders below
       }
     });
 
-    // 3. User account audit logs directly from database
-    if (Array.isArray(db.user?.logs)) {
-      db.user.logs.forEach((logItem: any, idx: number) => {
+    // 2b. Merch Orders Progress (Order Placed -> Preparing -> Delivered)
+    const userPhoneClean = (db.user?.phone_number || '').replace(/\D/g, '');
+    const userPhoneHash = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone_hash') || '') : '';
+    const userOrders = (db.merch_orders || []).filter((o) => {
+      if (currentUserId && o.user_id && o.user_id === currentUserId) return true;
+      if (userPhoneClean && o.user_phone && (o.user_phone === userPhoneClean || o.user_phone.endsWith(userPhoneClean))) return true;
+      if (userPhoneHash && o.user_phone && o.user_phone === userPhoneHash) return true;
+      return false;
+    });
+
+    const processedOrderIds = new Set<string>();
+
+    userOrders.forEach((ord) => {
+      processedOrderIds.add(ord.id);
+      const st = String(ord.status || 'pending').toLowerCase();
+      const isDelivered = st === 'delivered' || st === 'completed' || st === 'fulfilled';
+      const isDispatched = st === 'shipped' || st === 'out_for_delivery' || st === 'delivering';
+      const isReady = st === 'ready' || st === 'ready_for_pickup';
+      const isPreparing = st === 'preparing' || st === 'prepare' || st === 'processing';
+      const isCancelled = st === 'cancelled' || st === 'rejected';
+      const isDelivery = ord.fulfillment === 'delivery' || ord.fulfillment_method === 'delivery';
+
+      let step = 1;
+      let badgeLabel = 'Order Placed';
+      let badgeVariant: 'blue' | 'amber' | 'emerald' | 'rose' | 'purple' | 'indigo' = 'blue';
+
+      if (isDelivered) {
+        step = 3;
+        badgeLabel = isDelivery ? 'Delivered' : 'Collected';
+        badgeVariant = 'emerald';
+      } else if (isDispatched) {
+        step = 2;
+        badgeLabel = 'Out for Delivery';
+        badgeVariant = 'purple';
+      } else if (isReady) {
+        step = 2;
+        badgeLabel = 'Ready for Pickup';
+        badgeVariant = 'indigo';
+      } else if (isPreparing) {
+        step = 2;
+        badgeLabel = 'Preparing';
+        badgeVariant = 'amber';
+      } else if (isCancelled) {
+        step = 0;
+        badgeLabel = 'Cancelled';
+        badgeVariant = 'rose';
+      } else {
+        step = 1;
+        badgeLabel = 'Order Placed';
+        badgeVariant = 'blue';
+      }
+
+      const itemsSummary = Array.isArray(ord.items) && ord.items.length > 0
+        ? ord.items.map((i: any) => `${i.qty}x ${i.name || 'Merch'}`).join(', ')
+        : 'Merch Item';
+
+      const desc = isDelivered
+        ? (isDelivery ? `Order delivered to ${ord.delivery_address || 'your address'}.` : `Order collected successfully.`)
+        : isDispatched
+        ? `Out for delivery to ${ord.delivery_address || 'your address'}.`
+        : isReady
+        ? `Ready for pickup at ${db.settings.self_collect_address || 'HSG Global HQ'}.`
+        : isPreparing
+        ? (isDelivery ? 'Your order is currently being prepared and packed for delivery.' : 'Your order is being packed and prepared for pickup.')
+        : isCancelled
+        ? 'Order has been cancelled.'
+        : (isDelivery ? `Order placed. Awaiting warehouse preparation for delivery.` : `Order placed. Preparing for self-pickup.`);
+
+      const cleanId = ord.id.replace(/^LDG-/, '');
+      list.push({
+        id: `mord-${ord.id}`,
+        category: 'Order',
+        title: 'Order Placed to HSG+',
+        orderId: cleanId,
+        orderData: ord,
+        description: `#${cleanId}`,
+        timestamp: Number(ord.created_at || Date.now()),
+        badge: { label: badgeLabel, variant: badgeVariant },
+        iconType: 'order',
+        orderProgress: {
+          step,
+          statusText: badgeLabel,
+          fulfillment: isDelivery ? 'delivery' : 'collect',
+          deliveryAddress: ord.delivery_address,
+        },
+      });
+    });
+
+    // Also include any standalone shop_order transactions not in merch_orders
+    (db.transactions || [])
+      .filter((tx) => {
+        const txType = String(tx.type || '');
+        const titleLower = String(tx.title || '').toLowerCase();
+        return txType === 'shop_order' || titleLower.includes('redeem') || titleLower.includes('shop order');
+      })
+      .forEach((tx) => {
+        const fullTxText = `${tx.id} ${tx.title || ''} ${tx.description || ''}`;
+        const ordMatch = fullTxText.match(/ORD-\d+-\d+/i);
+        const resolvedOrdId = ordMatch ? ordMatch[0] : '';
+
+        // If this order is already in processedOrderIds, skip
+        if (resolvedOrdId && processedOrderIds.has(resolvedOrdId)) {
+          return;
+        }
+
+        // Check if db.merch_orders has this order
+        const existingMerchOrder = resolvedOrdId
+          ? (db.merch_orders || []).find((o) => o.id === resolvedOrdId || o.id.includes(resolvedOrdId) || resolvedOrdId.includes(o.id))
+          : null;
+
+        if (existingMerchOrder) {
+          processedOrderIds.add(existingMerchOrder.id);
+          const st = String(existingMerchOrder.status || 'pending').toLowerCase();
+          const isDelivered = st === 'delivered' || st === 'completed' || st === 'fulfilled';
+          const isDispatched = st === 'shipped' || st === 'out_for_delivery' || st === 'delivering';
+          const isReady = st === 'ready' || st === 'ready_for_pickup';
+          const isPreparing = st === 'preparing' || st === 'prepare' || st === 'processing';
+          const isCancelled = st === 'cancelled' || st === 'rejected';
+          const isDelivery = String(existingMerchOrder.fulfillment_method || existingMerchOrder.fulfillment || '').toLowerCase() === 'delivery';
+
+          let step = 1;
+          let badgeLabel = 'Order Placed';
+          let badgeVariant: 'blue' | 'amber' | 'emerald' | 'rose' | 'purple' | 'indigo' = 'blue';
+
+          if (isDelivered) {
+            step = 3;
+            badgeLabel = 'Delivered';
+            badgeVariant = 'emerald';
+          } else if (isDispatched || isReady || isPreparing) {
+            step = 2;
+            badgeLabel = 'Preparing';
+            badgeVariant = 'amber';
+          } else if (isCancelled) {
+            step = 0;
+            badgeLabel = 'Cancelled';
+            badgeVariant = 'rose';
+          } else {
+            step = 1;
+            badgeLabel = 'Order Placed';
+            badgeVariant = 'blue';
+          }
+
+          const cleanId = existingMerchOrder.id.replace(/^LDG-/, '');
+          list.push({
+            id: `mord-${existingMerchOrder.id}`,
+            category: 'Order',
+            title: 'Order Placed to HSG+',
+            orderId: cleanId,
+            orderData: existingMerchOrder,
+            description: `#${cleanId}`,
+            timestamp: Number(existingMerchOrder.created_at || tx.created_at || Date.now()),
+            badge: { label: badgeLabel, variant: badgeVariant },
+            iconType: 'order',
+            orderProgress: {
+              step,
+              statusText: badgeLabel,
+              fulfillment: isDelivery ? 'delivery' : 'collect',
+              deliveryAddress: existingMerchOrder.delivery_address,
+            },
+          });
+          return;
+        }
+
+        const cleanOrdId = resolvedOrdId || tx.id.replace(/^LDG-/, '');
+        processedOrderIds.add(cleanOrdId);
+
+        // Parse description: "Shop Order: 9x BOOM+ RUNNING CAP (Delivery ORD-1793164277529-1944)"
+        let parsedText = (tx.description || tx.title || '').replace(/^Shop Order:\s*/i, '');
+        const isDelivery = /delivery/i.test(parsedText) || /delivery/i.test(tx.title || '');
+        parsedText = parsedText.replace(/\s*\((Delivery|Self-Pickup|Pickup)[^)]*\)/i, '').trim();
+
+        let parsedQty = 1;
+        let parsedName = parsedText || 'Merch Item';
+        const qm = parsedText.match(/^(\d+)x\s+(.+)$/i);
+        if (qm) {
+          parsedQty = parseInt(qm[1], 10);
+          parsedName = qm[2].trim();
+        }
+
+        const ptsAmt = Math.abs(Number((tx as any).point ?? tx.amount_points ?? tx.points ?? 0));
+        const cashAmt = Math.abs(Number((tx as any).cashback ?? tx.amount_cashback ?? tx.amount ?? 0));
+        const fee = isDelivery ? (Number(db.settings.delivery_fee) || 4.5) : 0;
+
+        const syntheticOrder: MerchOrderRecord = {
+          id: cleanOrdId,
+          user_id: currentUserId,
+          user_phone: storedAuthPhone || db.user?.phone_number || '',
+          user_nickname: db.user?.nickname || 'Member',
+          items: [
+            {
+              name: parsedName,
+              qty: parsedQty,
+              points: ptsAmt,
+              cash: cashAmt > fee ? Number((cashAmt - fee).toFixed(2)) : 0,
+              payWith: ptsAmt > 0 ? 'points' : 'cashback',
+            },
+          ],
+          fulfillment: isDelivery ? 'delivery' : 'collect',
+          fulfillment_method: isDelivery ? 'delivery' : 'collect',
+          delivery_address: isDelivery ? (db.user?.address || 'Hantar di sini') : undefined,
+          delivery_fee: fee,
+          total_points: ptsAmt,
+          total_cash: cashAmt,
+          status: 'pending',
+          created_at: Number(tx.created_at || Date.now() - 86400000),
+        };
+
+        const cleanId = cleanOrdId.replace(/^LDG-/, '');
         list.push({
-          id: `db-log-${logItem.timestamp || idx}`,
-          category: 'Account',
-          title: logItem.action || 'Account Activity',
-          description: logItem.note || 'Account event verified.',
-          timestamp: Number(logItem.timestamp || Date.now()),
-          badge: { label: 'Verified', variant: 'blue' },
-          iconType: 'shield',
+          id: `tx-shop-${tx.id}`,
+          category: 'Order',
+          title: 'Order Placed to HSG+',
+          orderId: cleanId,
+          orderData: syntheticOrder,
+          description: `#${cleanId}`,
+          timestamp: Number(tx.created_at || Date.now() - 86400000),
+          badge: { label: 'Order Placed', variant: 'blue' },
+          iconType: 'order',
+          orderProgress: {
+            step: 1,
+            statusText: 'Order Placed',
+            fulfillment: isDelivery ? 'delivery' : 'collect',
+          },
         });
       });
-    } else if (db.user?.phone_number) {
+
+    // 3. Contest Submissions (for entries that have 0 points or are not yet in ledger)
+    (db.contest_submissions || [])
+      .filter((s) => currentUserId && s.user_id === currentUserId)
+      .forEach((s) => {
+        const hasTx = list.some((it) => it.id === `tx-contest-LDG-${s.id}`);
+        if (hasTx) return;
+        const st = String(s.status || 'submitted').toLowerCase();
+        const isWinner = st === 'winner' || st === 'approved' || st === 'verified';
+        const isRejected = st === 'rejected';
+        list.push({
+          id: `csub-${s.id}`,
+          category: 'Reward',
+          title: `Contest Entry: ${s.contest_title || 'HSG+ Contest'}`,
+          description: isWinner
+            ? `Contest entry verified${s.prize_awarded ? ` (${s.prize_awarded})` : ''}.`
+            : isRejected
+            ? `Contest entry declined${(s as any).rejection_reason ? `: ${(s as any).rejection_reason}` : ''}.`
+            : 'Contest entry submitted for verification.',
+          timestamp: Number(s.created_at || s.timestamp || Date.now()),
+          badge: isRejected
+            ? { label: 'Declined', variant: 'rose' }
+            : isWinner
+            ? { label: 'Verified', variant: 'emerald' }
+            : { label: 'Submitted', variant: 'amber' },
+          iconType: isRejected ? 'alert' : 'gift',
+        });
+      });
+
+    // 4. Event Join & Check-in (from user's joined/checked-in events)
+    (db.events || [])
+      .filter(
+        (ev) => ev.user_status === 'joined' || ev.user_status === 'checked_in'
+      )
+      .forEach((ev) => {
+        const isCheckedIn = ev.user_status === 'checked_in';
+        list.push({
+          id: `ev-status-${ev.id}-${ev.user_status}`,
+          category: 'Reward',
+          title: isCheckedIn
+            ? `Event Checked-In: ${ev.title}`
+            : `Event Joined: ${ev.title}`,
+          description: isCheckedIn
+            ? `Checked in at ${ev.location || 'Event Venue'}${
+                Number(ev.reward_points || 0) > 0 ? ` (+${ev.reward_points} pts)` : ''
+              }.`
+            : `RSVP confirmed for ${ev.title} at ${ev.location || 'Event Venue'}.`,
+          timestamp: Number(ev.date_timestamp || Date.now()),
+          badge: {
+            label: isCheckedIn ? 'Checked-In' : 'Joined',
+            variant: isCheckedIn ? 'emerald' : 'blue',
+          },
+          iconType: 'check',
+        });
+      });
+
+    // 5. User account audit logs directly from database (Register + profile updates)
+    const userLogs = Array.isArray(db.user?.logs) ? db.user!.logs : [];
+    let hasRegisterLog = false;
+    userLogs.forEach((logItem: any, idx: number) => {
+      if (String(logItem?.action || '').toLowerCase().includes('register')) {
+        hasRegisterLog = true;
+      }
       list.push({
-        id: `account-auth-${db.user.phone_number}`,
+        id: `db-log-${logItem.timestamp || idx}`,
         category: 'Account',
-        title: 'Account Verified',
-        description: 'WhatsApp phone number successfully authenticated.',
-        timestamp: Number(db.user.last_active_timestamp || Date.now()),
+        title: logItem.action || 'Account Activity',
+        description: logItem.note || 'Account event verified.',
+        timestamp: Number(logItem.timestamp || Date.now()),
+        badge: { label: 'Verified', variant: 'blue' },
+        iconType: 'shield',
+      });
+    });
+
+    if (!hasRegisterLog && db.user) {
+      list.push({
+        id: `account-register-${db.user.id || db.user.phone_number || 'me'}`,
+        category: 'Account',
+        title: 'Account Registered',
+        description: 'Account created and verified via WhatsApp.',
+        timestamp: Number(
+          db.user.created_at || db.user.last_active_timestamp || Date.now()
+        ),
         badge: { label: 'Verified', variant: 'emerald' },
         iconType: 'shield',
       });
@@ -418,7 +791,15 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         return true;
       })
       .sort((a, b) => b.timestamp - a.timestamp);
-  }, [localActivities, db.cashback_claims, db.transactions, db.user, isAuthenticated]);
+  }, [
+    localActivities,
+    db.cashback_claims,
+    db.transactions,
+    db.contest_submissions,
+    db.events,
+    db.user,
+    isAuthenticated,
+  ]);
 
   // Withdrawal state
   const [withdrawAmount, setWithdrawAmount] = useState<string>(
@@ -522,9 +903,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     if (isNaN(amt) || amt <= 0) {
       return;
     }
-    const resolvedPaynow = paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
+    const resolvedPaynow = paynow.trim() || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
     if (!resolvedPaynow) {
-      updateAccountProfile({ paynow: cleanDefaultPhone });
+      showToast('Please enter your Singapore PayNow number to withdraw.');
+      setActiveSubTab('account');
+      return;
     }
     // Open explicit confirmation modal (includes privacy consent & point charges preview)
     setShowWithdrawConfirmModal(true);
@@ -533,7 +916,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const handleConfirmWithdrawSubmit = () => {
     setShowWithdrawConfirmModal(false);
     const amt = Number(withdrawAmount);
-    const resolvedPaynow = paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
+    const resolvedPaynow = paynow.trim() || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '';
     requestWithdrawal(amt, resolvedPaynow);
     // Hide withdrawal form box after request
     setWalletActionTab(null);
@@ -589,7 +972,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     }
   };
 
-  const getBadgeClass = (variant?: 'amber' | 'emerald' | 'rose' | 'blue' | 'zinc') => {
+  const getBadgeClass = (variant?: 'amber' | 'emerald' | 'rose' | 'blue' | 'zinc' | 'purple' | 'indigo') => {
     switch (variant) {
       case 'amber':
         return 'bg-amber-50 text-amber-600 border border-amber-200';
@@ -599,6 +982,10 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         return 'bg-rose-50 text-rose-600 border border-rose-200';
       case 'blue':
         return 'bg-blue-50 text-blue-600 border border-blue-200';
+      case 'purple':
+        return 'bg-purple-50 text-purple-600 border border-purple-200';
+      case 'indigo':
+        return 'bg-indigo-50 text-indigo-600 border border-indigo-200';
       case 'zinc':
       default:
         return 'bg-zinc-100 text-zinc-600 border border-zinc-200';
@@ -839,7 +1226,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 </button>
               </div>
               <div className="flex items-center justify-between text-[11px] text-zinc-500 px-1">
-                <span>PayNow: <strong className="text-zinc-800 font-semibold">{paynow || cleanDefaultPhone || 'Mobile Number'}</strong></span>
+                <span>PayNow: <strong className="text-zinc-800 font-semibold">{paynow.trim() || 'Not set'}</strong></span>
                 {Number(db.settings.withdrawal_points_fee ?? 0) > 0 ? (
                   <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/80 text-[10px]">
                     Fee: {db.settings.withdrawal_points_fee} pts
@@ -914,7 +1301,14 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               {allActivities.map((act) => (
                 <div
                   key={act.id}
-                  className="w-full p-3.5 rounded-2xl bg-white shadow-2xs flex items-start gap-3 transition"
+                  onClick={() => {
+                    if (act.category === 'Order' && act.orderData) {
+                      setSelectedReceiptOrder(act.orderData);
+                    }
+                  }}
+                  className={`w-full p-3.5 rounded-2xl bg-white shadow-2xs flex items-start gap-3 transition ${
+                    act.category === 'Order' ? 'cursor-pointer hover:bg-zinc-50/80 active:scale-[0.99]' : ''
+                  }`}
                 >
                   {/* Left Icon */}
                   <div className="w-9 h-9 rounded-full shrink-0 bg-[#F6F6F9] flex items-center justify-center mt-0.5">
@@ -940,6 +1334,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                     <p className="text-[11px] text-zinc-600 mt-1 leading-snug">
                       {act.description}
                     </p>
+
                     <div className="flex items-center gap-1.5 mt-2 text-[10px] text-zinc-400 font-medium">
                       <Clock className="w-3 h-3 text-zinc-400" />
                       <span>{formatActivityTime(act.timestamp)}</span>
@@ -979,7 +1374,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 !isAuthenticated
                   ? '(Not signed in — Tap to Log In)'
                   : storedAuthPhone
-                  ? (storedAuthPhone.startsWith('65') ? `+65 ${storedAuthPhone.slice(2)}` : storedAuthPhone)
+                  ? (storedAuthPhone.startsWith('+') ? storedAuthPhone : `+${storedAuthPhone}`)
                   : resolvedPhoneLast4
                   ? `...${resolvedPhoneLast4}`
                   : (db.user?.phone_number && !db.user.phone_number.includes('0000') ? db.user.phone_number : '••••••••••••')
@@ -1008,6 +1403,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             <input
               type="text"
               value={paynow}
+              placeholder="e.g. 83494429 or UEN"
               onChange={(e) => { isEditingRef.current = true; setPaynow(e.target.value); }}
               onFocus={(e) => { isEditingRef.current = true; setIsInputFocused(true); handleScrollInputToCenter(e.currentTarget); }}
               className="w-full h-10 px-3.5 mt-1 rounded-xl bg-[#F6F6F9] text-[#141416] text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0B57D0]/20 focus:bg-white transition"
@@ -1300,7 +1696,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-zinc-500 font-medium">PayNow Destination</span>
                 <span className="font-mono font-bold text-zinc-800">
-                  {(paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '')}
+                  {paynow.trim() || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || 'Not set'}
                 </span>
               </div>
               {Number(db.settings.withdrawal_points_fee ?? 0) > 0 && (
@@ -1327,7 +1723,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   <span>Privacy Mode</span>
                 </div>
                 <p className="text-[11px] text-emerald-800 font-medium leading-normal">
-                  You authorize HSG+ to view your PayNow number (<strong>{(paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '')}</strong>) to send this payout.
+                  You authorize HSG+ to view your PayNow number (<strong>{paynow.trim() || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || 'Not set'}</strong>) to send this payout.
                 </p>
               </div>
             ) : (
@@ -1337,7 +1733,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   <span>Confirm PayNow</span>
                 </div>
                 <p className="text-[11px] text-zinc-600 font-medium leading-normal">
-                  Payout will be transferred to <strong>{(paynow.trim() || cleanDefaultPhone || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || '')}</strong>.
+                  Payout will be transferred to <strong>{paynow.trim() || (typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_paynow') || '') : '') || 'Not set'}</strong>.
                 </p>
               </div>
             )}
@@ -1359,6 +1755,219 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 Confirm & Withdraw
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORDER DETAILS RECEIPT MODAL */}
+      {selectedReceiptOrder && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-zinc-200 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+            {/* Store Receipt Header */}
+            <div className="text-center pb-2.5 border-b-2 border-dashed border-zinc-200">
+              <div className="text-[10px] font-extrabold tracking-widest text-zinc-400 uppercase">
+                HSG+ Official Store
+              </div>
+              <h3 className="text-base font-black text-[#141416] mt-0.5 tracking-tight">
+                PURCHASE RECEIPT
+              </h3>
+              <div className="text-[11px] font-mono font-bold text-zinc-500 mt-0.5">
+                #{selectedReceiptOrder.id.replace(/^LDG-/, '')}
+              </div>
+            </div>
+
+            {/* Order Details Metadata */}
+            <div className="text-xs space-y-1.5 py-1">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500 font-medium">Order Date:</span>
+                <span className="font-semibold text-zinc-800">
+                  {new Date(Number(selectedReceiptOrder.created_at || Date.now())).toLocaleString('en-SG', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500 font-medium">Status:</span>
+                <span className="font-bold uppercase text-[10px] px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                  {selectedReceiptOrder.status || 'Order Placed'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500 font-medium">Customer Phone:</span>
+                <span className="font-mono font-bold text-zinc-800">
+                  {(() => {
+                    const raw = selectedReceiptOrder.user_phone || storedAuthPhone || db.user?.phone_number || '';
+                    const c = raw.replace(/\D/g, '');
+                    if (c.length === 10 && c.startsWith('65')) return `+65 ${c.slice(2, 6)} ${c.slice(6)}`;
+                    if (c.length === 8) return `+65 ${c.slice(0, 4)} ${c.slice(4)}`;
+                    return raw || '-';
+                  })()}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-2 pt-1 border-t border-zinc-100">
+                <span className="text-zinc-500 font-medium shrink-0">Fulfillment:</span>
+                <div className="text-right">
+                  <div className="font-bold text-zinc-800">
+                    {String(selectedReceiptOrder.fulfillment_method || selectedReceiptOrder.fulfillment || '').toLowerCase() === 'delivery'
+                      ? 'Home Delivery'
+                      : 'Self-Pickup'}
+                  </div>
+                  {String(selectedReceiptOrder.fulfillment_method || selectedReceiptOrder.fulfillment || '').toLowerCase() === 'delivery' ? (
+                    <div className="text-[11px] text-zinc-600 max-w-[200px] leading-tight mt-0.5">
+                      {selectedReceiptOrder.delivery_address || 'Address provided'}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-zinc-600 max-w-[200px] leading-tight mt-0.5">
+                      {db.settings.self_collect_address || 'HSG Global HQ, Singapore'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 3-Step Order Progress Tracker */}
+            {(() => {
+              const st = String(selectedReceiptOrder.status || 'pending').toLowerCase();
+              const isDelivered = st === 'delivered' || st === 'completed' || st === 'fulfilled';
+              const isPreparing = st === 'preparing' || st === 'processing' || st === 'prepare' || st === 'shipped' || st === 'ready';
+              const step = isDelivered ? 3 : isPreparing ? 2 : 1;
+              return (
+                <div className="py-2.5 px-3 rounded-2xl bg-[#F6F6F9] border border-zinc-200/60">
+                  <div className="flex items-center justify-between relative px-2 pt-1 pb-1">
+                    <div className="absolute top-3.5 left-6 right-6 h-0.5 bg-zinc-200 z-0" />
+                    <div
+                      className={`absolute top-3.5 left-6 h-0.5 z-0 transition-all duration-300 ${
+                        step >= 3 ? 'right-6 bg-emerald-500' : step >= 2 ? 'w-1/2 bg-amber-500' : 'w-0'
+                      }`}
+                    />
+
+                    {/* Step 1 */}
+                    <div className="relative z-10 flex flex-col items-center">
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        step >= 1 ? 'bg-[#0B57D0] text-white shadow-xs' : 'bg-zinc-200 text-zinc-400'
+                      }`}>
+                        {step > 1 ? '✓' : '1'}
+                      </div>
+                      <span className="text-[9px] font-bold text-zinc-600 mt-1">Order Placed</span>
+                    </div>
+
+                    {/* Step 2 */}
+                    <div className="relative z-10 flex flex-col items-center">
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        step > 2 ? 'bg-emerald-500 text-white' : step === 2 ? 'bg-amber-500 text-white ring-2 ring-amber-200' : 'bg-zinc-200 text-zinc-400'
+                      }`}>
+                        {step > 2 ? '✓' : '2'}
+                      </div>
+                      <span className="text-[9px] font-bold text-zinc-600 mt-1">Preparing</span>
+                    </div>
+
+                    {/* Step 3 */}
+                    <div className="relative z-10 flex flex-col items-center">
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        step >= 3 ? 'bg-emerald-500 text-white shadow-xs' : 'bg-zinc-200 text-zinc-400'
+                      }`}>
+                        {step >= 3 ? '✓' : '3'}
+                      </div>
+                      <span className="text-[9px] font-bold text-zinc-600 mt-1">Delivered</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Itemized Items Table: item name | qty | amount | pts */}
+            <div className="py-2.5 border-t-2 border-b-2 border-dashed border-zinc-200 space-y-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                Purchased Items
+              </div>
+
+              {/* Table Column Headers */}
+              <div className="grid grid-cols-12 text-[10px] font-black text-zinc-400 uppercase pb-1 border-b border-zinc-100">
+                <span className="col-span-6">Item Name</span>
+                <span className="col-span-2 text-center">Qty</span>
+                <span className="col-span-2 text-right">Amount</span>
+                <span className="col-span-2 text-right">Pts</span>
+              </div>
+
+              {/* Table Rows */}
+              <div className="space-y-2 pt-0.5">
+                {(selectedReceiptOrder.items && selectedReceiptOrder.items.length > 0) ? (
+                  selectedReceiptOrder.items.map((item: any, idx: number) => {
+                    const pts = Number(item.points || 0);
+                    const cash = Number(item.cash || item.price || 0);
+                    const qty = Number(item.qty || 1);
+                    return (
+                      <div key={idx} className="grid grid-cols-12 text-xs items-center gap-1">
+                        <div className="col-span-6 min-w-0 pr-1">
+                          <div className="font-bold text-zinc-900 leading-snug line-clamp-2">
+                            {item.name || 'Merch Item'}
+                          </div>
+                        </div>
+                        <div className="col-span-2 text-center font-bold text-zinc-700">
+                          {qty}
+                        </div>
+                        <div className="col-span-2 text-right font-bold text-[#EC008C]">
+                          {cash > 0 ? `$${(cash * qty).toFixed(2)}` : '$0.00'}
+                        </div>
+                        <div className="col-span-2 text-right font-bold text-zinc-900">
+                          {pts > 0 ? `${(pts * qty).toLocaleString()}` : '0'}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-xs text-zinc-400 italic">Merchandise Item</div>
+                )}
+              </div>
+            </div>
+
+            {/* Totals Summary */}
+            <div className="space-y-1.5 text-xs py-1">
+              <div className="flex items-center justify-between text-zinc-600">
+                <span>Delivery Fee:</span>
+                <span className="font-semibold text-zinc-800">
+                  {Number(selectedReceiptOrder.delivery_fee || 0) > 0
+                    ? `$${Number(selectedReceiptOrder.delivery_fee).toFixed(2)}`
+                    : '$0.00 (Free)'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-sm font-black text-zinc-950 pt-1.5 border-t border-zinc-100">
+                <span>Total Paid:</span>
+                <span className="text-[#EC008C]">
+                  {Number(selectedReceiptOrder.total_points || 0) > 0
+                    ? `${Number(selectedReceiptOrder.total_points).toLocaleString()} pts`
+                    : ''}
+                  {Number(selectedReceiptOrder.total_points || 0) > 0 && Number(selectedReceiptOrder.total_cash || 0) > 0
+                    ? ' + '
+                    : ''}
+                  {Number(selectedReceiptOrder.total_cash || 0) > 0
+                    ? `$${Number(selectedReceiptOrder.total_cash).toFixed(2)}`
+                    : ''}
+                  {Number(selectedReceiptOrder.total_points || 0) === 0 && Number(selectedReceiptOrder.total_cash || 0) === 0
+                    ? '$0.00'
+                    : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* Receipt Footer Message */}
+            <div className="text-center pt-2 border-t border-zinc-100 text-[10px] text-zinc-400">
+              Thank you for shopping with HSG+!
+            </div>
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setSelectedReceiptOrder(null)}
+              className="w-full h-11 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center mt-1"
+            >
+              Close Receipt
+            </button>
           </div>
         </div>
       )}
