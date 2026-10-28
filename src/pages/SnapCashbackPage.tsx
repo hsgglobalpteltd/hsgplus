@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { compressImageFile } from '../lib/imageCompressor';
+import { SendingAnimationOverlay } from '../components/SendingAnimationOverlay';
 
 const LIVE_WORKER_URL = 'https://ib-v2.hsgglobalpteltd.workers.dev';
 
@@ -41,6 +42,7 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
 
   // Custom campaign questions answers (indexed by question id or key)
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+  const [isSending, setIsSending] = useState<boolean>(false);
 
   useEffect(() => {
     if (activeCampaign) {
@@ -206,8 +208,7 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
       receipt_photo_url: receiptPhotoUrl || receiptPreviewUrl,
     });
 
-    showToast('Receipt submitted! Your cashback claim is under review.');
-    onSuccessDone();
+    setIsSending(true);
   };
 
   // Get clean Brand Name + Reward for scrollable pill tab
@@ -591,6 +592,19 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
         </div>
       </form>
       )}
+
+      {/* Sending animation overlay (Theme 1 Yellow + Paper Plane Lottie) */}
+      <SendingAnimationOverlay
+        isOpen={isSending}
+        title="Sending Receipt..."
+        subtitle="Submitting proof to review queue"
+        durationMs={2500}
+        onComplete={() => {
+          setIsSending(false);
+          showToast('Receipt submitted! Your cashback claim is under review.');
+          onSuccessDone();
+        }}
+      />
     </div>
   );
 };

@@ -30,6 +30,41 @@ function formatCountdown(startTs?: number, endTs?: number, now = Date.now()): st
   return `${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s left`;
 }
 
+function ContestThumbnail({
+  src,
+  alt,
+  countdownText,
+}: {
+  src: string;
+  alt: string;
+  countdownText: string;
+}) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="w-full relative bg-zinc-100 overflow-hidden min-h-[220px]">
+      {!loaded && (
+        <div className="absolute inset-0 bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-100 animate-pulse flex items-center justify-center min-h-[220px]">
+          <div className="w-7 h-7 rounded-full border-2 border-zinc-300 border-t-zinc-500 animate-spin opacity-40" />
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        className={`w-full h-auto max-h-[560px] object-cover block transition-opacity duration-300 ${
+          loaded ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+      <div className="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-[#141416]/90 backdrop-blur-xs text-[#FFEA00] text-[11px] font-extrabold flex items-center gap-1.5 shadow-md z-10">
+        <Clock className="w-3.5 h-3.5 text-[#EC008C]" />
+        <span>{countdownText}</span>
+      </div>
+    </div>
+  );
+}
+
 export const HomePage: React.FC<HomePageProps> = ({
   onOpenAccount,
   onOpenEvents,
@@ -58,40 +93,44 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const availableCash = isAuthenticated && db.user
     ? Number(db.user.wallet_balance || 0)
-    : MOCK_AVAILABLE_CASH;
+    : (isAuthenticated ? Number(db.user?.wallet_balance || 0) : MOCK_AVAILABLE_CASH);
 
-  const pendingCashFromTxs = (db.transactions || [])
-    .filter((tx) => tx.status === 'pending')
-    .reduce((sum, tx) => {
-      const amt = Number(
-        tx.amount_cashback ?? tx.net_cashback ?? tx.cashback_amount ?? tx.amount ?? 0
-      );
-      return sum + (amt > 0 ? amt : 0);
-    }, 0);
+  const pendingCashFromTxs = React.useMemo(() => {
+    return (db.transactions || [])
+      .filter((tx) => tx.status === 'pending')
+      .reduce((sum, tx) => {
+        const amt = Number(
+          tx.amount_cashback ?? tx.net_cashback ?? tx.cashback_amount ?? tx.amount ?? 0
+        );
+        return sum + (amt > 0 ? amt : 0);
+      }, 0);
+  }, [db.transactions]);
 
   const pendingCash = isAuthenticated && db.user
     ? Math.max(
         Number(db.user?.pending_balance || 0),
         Number(pendingCashFromTxs.toFixed(2))
       )
-    : Number((MOCK_TOTAL_CASH - MOCK_AVAILABLE_CASH).toFixed(2));
+    : (isAuthenticated ? 0 : Number((MOCK_TOTAL_CASH - MOCK_AVAILABLE_CASH).toFixed(2)));
 
   const totalCash = isAuthenticated && db.user
     ? Number((availableCash + pendingCash).toFixed(2))
-    : MOCK_TOTAL_CASH;
+    : (isAuthenticated ? availableCash : MOCK_TOTAL_CASH);
 
   const availablePts = isAuthenticated && db.user
     ? Number(db.user?.points_balance || 0)
-    : MOCK_AVAILABLE_PTS;
+    : (isAuthenticated ? Number(db.user?.points_balance || 0) : MOCK_AVAILABLE_PTS);
 
-  const pendingPtsFromTxs = (db.transactions || [])
-    .filter((tx) => tx.status === 'pending')
-    .reduce((sum, tx) => {
-      const pts = Number(
-        tx.amount_points ?? tx.net_points ?? tx.points ?? 0
-      );
-      return sum + (pts > 0 ? pts : 0);
-    }, 0);
+  const pendingPtsFromTxs = React.useMemo(() => {
+    return (db.transactions || [])
+      .filter((tx) => tx.status === 'pending')
+      .reduce((sum, tx) => {
+        const pts = Number(
+          tx.amount_points ?? tx.net_points ?? tx.points ?? 0
+        );
+        return sum + (pts > 0 ? pts : 0);
+      }, 0);
+  }, [db.transactions]);
 
   const pendingPts = isAuthenticated && db.user
     ? Math.max(
@@ -102,7 +141,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const totalPts = isAuthenticated && db.user
     ? availablePts + pendingPts
-    : MOCK_TOTAL_PTS;
+    : (isAuthenticated ? availablePts : MOCK_TOTAL_PTS);
 
   const cashStr = `$${totalCash.toFixed(2)}`;
   const ptsStr = totalPts.toLocaleString();
@@ -191,17 +230,10 @@ export const HomePage: React.FC<HomePageProps> = ({
         <section className="w-full">
           <div className="flex items-center justify-between mb-2.5">
             <h2 className="text-base font-bold text-[#141416]">Active Contests</h2>
-            <button
-              type="button"
-              onClick={() => onOpenContest(db.contests[0].id)}
-              className="text-xs font-semibold text-[#EC008C]"
-            >
-              Open all
-            </button>
           </div>
 
           <div className="w-full space-y-3.5">
-            {db.contests.map((contest) => {
+            {db.contests.slice(0, 3).map((contest) => {
               const fpTitle =
                 contest.frontpage_title ||
                 contest.frontpage_config?.title ||
@@ -230,17 +262,11 @@ export const HomePage: React.FC<HomePageProps> = ({
                   className="w-full rounded-3xl bg-white overflow-hidden shadow-xs cursor-pointer active:scale-[0.99] transition border border-zinc-200/60"
                 >
                   {fpPhoto && (
-                    <div className="w-full bg-zinc-100 relative overflow-hidden">
-                      <img
-                        src={fpPhoto}
-                        alt={fpTitle}
-                        className="w-full h-auto max-h-[520px] object-cover block"
-                      />
-                      <div className="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-[#141416]/90 backdrop-blur-xs text-[#FFEA00] text-[11px] font-extrabold flex items-center gap-1.5 shadow-md">
-                        <Clock className="w-3.5 h-3.5 text-[#EC008C]" />
-                        <span>{countdownText}</span>
-                      </div>
-                    </div>
+                    <ContestThumbnail
+                      src={fpPhoto}
+                      alt={fpTitle}
+                      countdownText={countdownText}
+                    />
                   )}
 
                   <div className="p-4 space-y-3">

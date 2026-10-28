@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { compressImageFile } from '../lib/imageCompressor';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+import { SendingAnimationOverlay } from '../components/SendingAnimationOverlay';
 
 const LIVE_WORKER_URL = 'https://ib-v2.hsgglobalpteltd.workers.dev';
 
@@ -44,6 +46,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const [totalAmount, setTotalAmount] = useState<number | ''>('');
   const [qty, setQty] = useState<number | ''>(1);
   const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({});
+  const [isEnteringAnother, setIsEnteringAnother] = useState<boolean>(false);
+  const [isSending, setIsSending] = useState<boolean>(false);
 
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -83,7 +87,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     return linkedEvent?.user_status === 'checked_in';
   }, [hasRequiredEvent, linkedEvent]);
 
-  // Dynamic Prize Reward Label (Cash, Point, Product or any combo)
+  // Dynamic Prize Reward Label (Cash Credit, Point, Product or any combo)
   const getRewardLabel = (p: {
     reward_type?: string;
     reward_cash?: number;
@@ -92,7 +96,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   }) => {
     const parts: string[] = [];
     if (p.reward_cash && Number(p.reward_cash) > 0) {
-      parts.push(`+$${Number(p.reward_cash).toFixed(2)} Cash`);
+      parts.push(`+$${Number(p.reward_cash).toFixed(2)} Cash Credit`);
     }
     if (p.reward_points && Number(p.reward_points) > 0) {
       parts.push(`+${p.reward_points} pts`);
@@ -103,7 +107,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     if (parts.length === 0) {
       if (p.reward_type === 'point') return `+${p.reward_points || 0} pts`;
       if (p.reward_type === 'cashback')
-        return `+$${Number(p.reward_cash || 0).toFixed(2)} Cash`;
+        return `+$${Number(p.reward_cash || 0).toFixed(2)} Cash Credit`;
       return 'Exclusive Prize';
     }
     return parts.join(' • ');
@@ -118,6 +122,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     setTotalAmount('');
     setQty(1);
     setExtraAnswers({});
+    setIsEnteringAnother(false);
   }, [contest?.id]);
 
   // Clean receipt photo upload directly to storage (same as cashback)
@@ -182,6 +187,9 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     ).length;
   }, [contest, db.contest_submissions, db.user?.id]);
 
+  const maxPerUser = Number(contest?.max_per_user ?? contest?.submission_limits?.max_per_user ?? 0);
+  const isQuotaReached = maxPerUser > 0 && userSubmissionsCount >= maxPerUser;
+
   // Inside Posters List (up to 8)
   const postersList = React.useMemo(() => {
     if (!contest) return [];
@@ -221,6 +229,34 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     return (db.contest_winners || []).filter((w) => w.contest_id === contest.id);
   }, [contest, db.contest_winners]);
 
+  // Current user's winning prizes for this contest
+  const myWinningPrizes = React.useMemo(() => {
+    if (!contest) return [];
+    const uid =
+      db.user?.id ||
+      (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') ||
+      '';
+    const uPhone = String(
+      db.user?.phone_number ||
+      (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_phone') : '') ||
+      ''
+    ).replace(/\D/g, '');
+    return (db.contest_winners || []).filter((w) => {
+      if (w.contest_id !== contest.id) return false;
+      if (uid && w.user_id && w.user_id === uid) return true;
+      if (
+        uPhone &&
+        w.user_phone &&
+        String(w.user_phone).replace(/\D/g, '').slice(-8) === uPhone.slice(-8)
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }, [contest, db.contest_winners, db.user?.id, db.user?.phone_number]);
+
+  const isWinnersAnnounced = Boolean(contest?.winners_announced) || contestWinners.length > 0;
+
   // Countdown timer calculations
   const getCountdownParts = () => {
     if (!contest?.end_timestamp) return null;
@@ -246,6 +282,11 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!contest) return;
+
+    if (isWinnersAnnounced) {
+      showToast('Winners have already been announced for this contest.');
+      return;
+    }
 
     if (cd?.isEnded) {
       showToast('This contest has already ended.');
@@ -291,14 +332,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       items_count: Number(qty),
     });
 
-    // Reset form after submit
-    setReceiptAttached(false);
-    setReceiptPhotoUrl('');
-    setReceiptPreviewUrl('');
-    setReceiptFileName('');
-    setTotalAmount('');
-    setQty(1);
-    setExtraAnswers({});
+    setIsSending(true);
   };
 
   // Mask Phone helper
@@ -351,8 +385,15 @@ export const ContestPage: React.FC<ContestPageProps> = ({
         <div className="w-full space-y-4">
           {/* Header Block: Countdown + Edge-to-Edge Posters (Zero Gap between posters, with breathing room to description) */}
           <div className="-mx-5 w-[calc(100%+2.5rem)] flex flex-col p-0 m-0 overflow-hidden pb-4">
-            {/* 1. CONTEST COUNTDOWN TIMER (FULL WIDTH) */}
-            {cd && (
+            {/* 1. CONTEST COUNTDOWN TIMER / ANNOUNCEMENT (FULL WIDTH) */}
+            {isWinnersAnnounced ? (
+              <div className="w-full px-5 py-3 bg-[#141416] text-white flex items-center justify-between text-xs shadow-xs">
+                <div className="flex items-center gap-2 font-bold text-amber-400">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Winners Announced</span>
+                </div>
+              </div>
+            ) : cd ? (
               <div className="w-full px-5 py-3 bg-[#141416] text-white flex items-center justify-between text-xs shadow-xs">
                 <div className="flex items-center gap-2 font-semibold text-zinc-300">
                   <Clock className="w-3.5 h-3.5 text-[#EC008C]" />
@@ -379,7 +420,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                   </span>
                 )}
               </div>
-            )}
+            ) : null}
 
             {/* 2. VERTICAL INSIDE POSTERS (EDGE-TO-EDGE, MAXIMUM 8) */}
             {postersList.length > 0 && (
@@ -424,73 +465,163 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
 
 
-          {/* 5. OUTCOME WINNER SCREEN (WHEN ENDED) VS SUBMISSION FORM (WHEN ACTIVE) */}
-          {cd?.isEnded ? (
+          {/* 5. OUTCOME WINNER SCREEN (WHEN WINNERS ANNOUNCED OR WHEN ENDED) VS SUBMISSION FORM (WHEN ACTIVE) */}
+          {isWinnersAnnounced ? (
             /* ==========================================================
-               OUTCOME SCREEN WHEN CONTEST IS FINISHED
+               WINNERS ANNOUNCED SCREEN (SHOWS ONCE WINNERS ARE DRAWN/ANNOUNCED)
                ========================================================== */
             <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-4 text-center animate-in fade-in duration-300">
-              {contest.winners_announced ? (
-                /* WINNERS ANNOUNCED */
-                <div className="space-y-4">
-                  <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
-                    <Trophy className="w-7 h-7" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-extrabold text-zinc-950">
-                      Contest Winners Announced! 🎉
-                    </h2>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      Congratulations to all our lucky winners! Winners can claim their prizes in{' '}
-                      <span className="font-bold text-zinc-800">Account &gt; Achievements</span>.
-                    </p>
-                  </div>
+              <div className="space-y-4">
+                <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+                  <Trophy className="w-7 h-7" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold text-zinc-950">
+                    Contest Winners Announced! 🎉
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Congratulations to all our lucky winners! Winners can claim their prizes in{' '}
+                    <span className="font-bold text-zinc-800">Account &gt; Achievements</span>.
+                  </p>
+                </div>
 
-                  {/* List of Announced Winners */}
-                  <div className="space-y-2 text-left pt-2">
-                    {contestWinners.length === 0 ? (
-                      <p className="text-xs text-zinc-400 text-center italic">
-                        Official winner roster being published...
-                      </p>
-                    ) : (
-                      contestWinners.map((w) => (
+                {/* List of Announced Winners */}
+                <div className="space-y-3 pt-1">
+                  {contestWinners.length === 0 ? (
+                    <p className="text-xs text-zinc-400 text-center italic py-2">
+                      Official winner roster being published...
+                    </p>
+                  ) : (
+                    contestWinners.map((w) => {
+                      const photoUrl = w.prize_photo_url || w.product_image;
+                      const hasImage = Boolean(photoUrl);
+                      const prizeTitle = w.prize_title || w.product_name || 'Prize';
+                      const rewardLabel = getRewardLabel(w);
+                      const isUserWinner = myWinningPrizes.some((wp) => wp.id === w.id);
+
+                      return (
                         <div
                           key={w.id}
-                          className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3"
+                          className={`relative overflow-hidden p-5 rounded-2xl flex flex-col items-center justify-center text-center transition-all ${
+                            isUserWinner
+                              ? 'bg-gradient-to-b from-amber-50/60 via-white to-white border-2 border-amber-300 ring-4 ring-amber-100/70 shadow-md'
+                              : 'bg-white border border-slate-200/90 shadow-2xs'
+                          }`}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {w.prize_photo_url || w.product_image ? (
-                              <img
-                                src={w.prize_photo_url || w.product_image}
-                                alt={w.prize_title || w.product_name || 'Prize'}
-                                className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-white shrink-0"
+                          {/* Lottie Confetti Animation Layer (Looping over card if user is winner) */}
+                          {isUserWinner && (
+                            <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
+                              <DotLottieReact
+                                src="/confetti.lottie"
+                                loop
+                                autoplay
+                                className="w-full h-full object-cover opacity-90 pointer-events-none"
                               />
-                            ) : (
-                              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                                <Trophy className="w-5 h-5" />
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-zinc-950 truncate">
-                                {w.prize_title || w.product_name}
-                              </div>
-                              <div className="text-[11px] text-zinc-500">
-                                Winner: <strong className="text-zinc-800">{w.user_nickname}</strong> ({maskPhone(w.user_phone)})
-                              </div>
                             </div>
+                          )}
+
+                          {/* Curved Flying Text: CONGRATS YOU WON! */}
+                          {isUserWinner && (
+                            <svg
+                              className="absolute inset-0 w-full h-full pointer-events-none z-30 select-none overflow-hidden"
+                              viewBox="0 0 340 180"
+                              preserveAspectRatio="none"
+                            >
+                              <defs>
+                                <linearGradient
+                                  id={`snakeGold-${w.id}`}
+                                  x1="0%"
+                                  y1="0%"
+                                  x2="100%"
+                                  y2="0%"
+                                >
+                                  <stop offset="0%" stopColor="#EA580C" />
+                                  <stop offset="30%" stopColor="#F59E0B" />
+                                  <stop offset="70%" stopColor="#FBBF24" />
+                                  <stop offset="100%" stopColor="#D97706" />
+                                </linearGradient>
+                                <path
+                                  id={`snakePath-${w.id}`}
+                                  d="M -130 175 Q 160 160, 450 15"
+                                  fill="none"
+                                />
+                              </defs>
+                              <text
+                                fill={`url(#snakeGold-${w.id})`}
+                                fontSize="36"
+                                fontWeight="900"
+                                letterSpacing="2px"
+                                className="uppercase font-black"
+                              >
+                                <textPath
+                                  href={`#snakePath-${w.id}`}
+                                  startOffset="105%"
+                                >
+                                  CONGRATS YOU WON!
+                                  <animate
+                                    attributeName="startOffset"
+                                    from="105%"
+                                    to="-75%"
+                                    dur="6.5s"
+                                    repeatCount="indefinite"
+                                  />
+                                </textPath>
+                              </text>
+                            </svg>
+                          )}
+
+                          {hasImage ? (
+                            <img
+                              src={photoUrl}
+                              alt={prizeTitle}
+                              className="w-20 h-20 rounded-2xl object-cover bg-slate-50 border border-slate-200 shadow-2xs mb-2.5 z-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mb-2 shadow-2xs z-0">
+                              <Trophy className="w-5 h-5 text-amber-500" />
+                            </div>
+                          )}
+
+                          <div
+                            className={`${
+                              hasImage ? 'text-base' : 'text-xl'
+                            } font-black text-zinc-950 tracking-tight z-0`}
+                          >
+                            {prizeTitle}
                           </div>
 
-                          <div className="text-right shrink-0">
-                            <span className="text-xs font-extrabold text-[#0B57D0]">
-                              {getRewardLabel(w)}
+                          <div className="text-sm font-extrabold text-zinc-800 mt-1 z-0">
+                            {w.user_nickname}
+                          </div>
+                          <div className="text-[11px] font-medium text-zinc-400 z-0">
+                            ({maskPhone(w.user_phone)})
+                          </div>
+
+                          <div className="mt-3 z-0">
+                            <span className="px-3.5 py-1 rounded-full bg-blue-50 text-[#0B57D0] text-xs font-black border border-blue-200 shadow-2xs">
+                              {rewardLabel}
                             </span>
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      );
+                    })
+                  )}
                 </div>
-              ) : userSubmissionsCount > 0 ? (
+
+                {/* If user had submissions, show their participation note */}
+                {userSubmissionsCount > 0 && (
+                  <div className="pt-2 border-t border-slate-100 text-[11px] text-zinc-500 font-medium">
+                    You entered {userSubmissionsCount} {userSubmissionsCount === 1 ? 'submission' : 'submissions'} for this contest.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : cd?.isEnded ? (
+            /* ==========================================================
+               CONTEST PERIOD ENDED BUT WINNERS NOT ANNOUNCED YET
+               ========================================================== */
+            <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-4 text-center animate-in fade-in duration-300">
+              {userSubmissionsCount > 0 ? (
                 /* USER JOINED BUT WINNERS NOT ANNOUNCED YET */
                 <div className="space-y-3 py-2">
                   <div className="w-14 h-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
@@ -666,6 +797,67 @@ export const ContestPage: React.FC<ContestPageProps> = ({
               >
                 <Calendar className="w-4 h-4 text-[#FFEA00]" />
                 <span>View Event &amp; Check In</span>
+              </button>
+            </div>
+          ) : isQuotaReached ? (
+            /* ==========================================================
+               ALL ALLOWED ENTRIES SUBMITTED (QUOTA REACHED)
+               All form inputs, upload area, and submit buttons hidden!
+               ========================================================== */
+            <div className="w-full p-6 rounded-3xl bg-white shadow-xs text-center space-y-4 animate-in fade-in duration-300">
+              <div className="w-14 h-14 rounded-full bg-[#141416] text-[#FFEA00] flex items-center justify-center mx-auto shadow-sm">
+                <Trophy className="w-7 h-7" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-extrabold text-[#141416]">
+                  You're in the Draw! 🎉
+                </h3>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80 text-[11px] font-bold">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Entry is pending review</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-zinc-900">
+                  You have submitted {userSubmissionsCount} {userSubmissionsCount === 1 ? 'entry' : 'entries'} for this contest.
+                </p>
+                <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                  Stay tuned and wait for winners to be announced! Good luck!
+                </p>
+              </div>
+            </div>
+          ) : userSubmissionsCount > 0 && !isEnteringAnother ? (
+            /* ==========================================================
+               ENTRY SUBMITTED VIEW (QUOTA REMAINING)
+               Clean status view with option to submit another entry!
+               ========================================================== */
+            <div className="w-full p-6 rounded-3xl bg-white shadow-xs text-center space-y-4 animate-in fade-in duration-300">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-extrabold text-[#141416]">
+                  Entry Submitted!
+                </h3>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80 text-[11px] font-bold">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Entry is pending review</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-zinc-900">
+                  You have submitted {userSubmissionsCount} {userSubmissionsCount === 1 ? 'entry' : 'entries'} for this contest.
+                </p>
+                <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                  The more entries you submit, the more chances you have to win!
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEnteringAnother(true)}
+                className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-[#FFEA00] font-extrabold text-xs shadow-md active:scale-[0.99] transition flex items-center justify-center gap-2 cursor-pointer mt-1"
+              >
+                <span>+ Submit Another Entry</span>
               </button>
             </div>
           ) : (
@@ -866,6 +1058,16 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                     ? `Submit Contest Entry (+${contest.reward_points || contest.submission_limits?.points_per_submission} pts)`
                     : 'Submit Contest Entry'}
                 </button>
+
+                {userSubmissionsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEnteringAnother(false)}
+                    className="w-full text-center text-xs font-bold text-zinc-400 hover:text-zinc-700 pt-1 transition cursor-pointer"
+                  >
+                    ← Back to My Entry Status
+                  </button>
+                )}
               </div>
             </form>
           )}
@@ -875,6 +1077,26 @@ export const ContestPage: React.FC<ContestPageProps> = ({
           No contest active right now. Please check back later.
         </div>
       )}
+
+      {/* Sending animation overlay (Theme 1 Yellow + Paper Plane Lottie) */}
+      <SendingAnimationOverlay
+        isOpen={isSending}
+        title="Sending Entry..."
+        subtitle="Submitting your contest entry"
+        durationMs={2500}
+        onComplete={() => {
+          setIsSending(false);
+          setReceiptAttached(false);
+          setReceiptPhotoUrl('');
+          setReceiptPreviewUrl('');
+          setReceiptFileName('');
+          setTotalAmount('');
+          setQty(1);
+          setExtraAnswers({});
+          setIsEnteringAnother(false);
+          showToast('Contest entry submitted successfully!');
+        }}
+      />
     </div>
   );
 };

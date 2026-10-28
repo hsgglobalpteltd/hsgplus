@@ -755,7 +755,17 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     (db.contest_submissions || [])
       .filter((s) => currentUserId && s.user_id === currentUserId)
       .forEach((s) => {
-        const hasTx = list.some((it) => it.id === `tx-contest-LDG-${s.id}`);
+        // Prevent duplicate cards if this contest entry was already logged via transactions
+        const hasTx = list.some(
+          (it) =>
+            it.id.includes(s.id) ||
+            it.id === `tx-contest-LDG-${s.id}` ||
+            it.id === `tx-contest-LDG-CSUB-${s.id}` ||
+            it.id === `csub-${s.id}` ||
+            (s.contest_title &&
+              it.title.toLowerCase().includes(s.contest_title.toLowerCase()) &&
+              Math.abs(it.timestamp - Number(s.created_at || s.timestamp || 0)) < 60000)
+        );
         if (hasTx) return;
         const st = String(s.status || 'submitted').toLowerCase();
         const isWinner = st === 'winner' || st === 'approved' || st === 'verified';
@@ -1349,7 +1359,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       {/* FLOATING PILL TABS WITH SOFT FADE TO ZERO AT BOTTOM EDGE */}
       <div
         ref={tabsStickyRef}
-        className="sticky top-0 z-20 -mx-5 px-5 pt-2 pb-3 pointer-events-auto"
+        className="sticky top-0 z-20 -mx-5 px-5 pt-5 pb-3 pointer-events-auto"
       >
         {/* Soft fading backdrop: dynamically matches theme color, covers scrolling body content, and appears only when 100% stuck */}
         <div
@@ -1358,7 +1368,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           }`}
           style={{
             background:
-              'linear-gradient(to bottom, var(--hsg-color-1, #FFEA00) 0%, color-mix(in srgb, var(--hsg-color-1, #FFEA00) 60%, transparent) 55%, transparent 100%)',
+              'linear-gradient(to bottom, color-mix(in srgb, var(--hsg-color-1, #FFEA00) 55%, #F6F6F9) 0%, color-mix(in srgb, var(--hsg-color-1, #FFEA00) 25%, transparent) 55%, transparent 100%)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
             maskImage:
@@ -1673,7 +1683,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
                 const rewardParts: string[] = [];
                 if (win.reward_cash && Number(win.reward_cash) > 0) {
-                  rewardParts.push(`+$${Number(win.reward_cash).toFixed(2)} Cash`);
+                  rewardParts.push(`+$${Number(win.reward_cash).toFixed(2)} Cash Credit`);
                 }
                 if (win.reward_points && Number(win.reward_points) > 0) {
                   rewardParts.push(`+${win.reward_points} pts`);
@@ -1686,7 +1696,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                     ? rewardParts.join(' • ')
                     : win.reward_type === 'point'
                     ? `+${win.reward_points || 0} pts`
-                    : `+$${Number(win.reward_cash || 0).toFixed(2)} Cash`;
+                    : `+$${Number(win.reward_cash || 0).toFixed(2)} Cash Credit`;
 
                 return (
                   <div
@@ -1797,7 +1807,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   </div>
                 );
               })
-            ) : (
+            ) : userWinningPrizes.length === 0 ? (
               <div className="w-full py-16 px-6 rounded-3xl bg-white text-center space-y-3 shadow-2xs border border-zinc-200/60">
                 <div className="w-14 h-14 mx-auto rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400">
                   <Trophy className="w-7 h-7 text-zinc-400" />
@@ -1809,7 +1819,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   </div>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}

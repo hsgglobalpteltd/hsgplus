@@ -255,9 +255,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
       )}`;
 
       try {
-        window.open(waUrl, '_blank');
+        // Direct location navigation avoids popup-blocking on mobile / async handlers
+        const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (isMobile) {
+          window.location.href = waUrl;
+        } else {
+          const win = window.open(waUrl, '_blank');
+          if (!win || win.closed || typeof win.closed === 'undefined') {
+            window.location.href = waUrl;
+          }
+        }
       } catch (openErr) {
-        console.warn('Popup blocked by browser or container:', openErr);
+        console.warn('Popup blocked by browser, falling back to location.href:', openErr);
+        window.location.href = waUrl;
       }
     } catch (err: any) {
       console.error('WhatsApp Login Init Error:', err);
@@ -295,7 +305,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
     const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(
       session.prefilled_message
     )}`;
-    window.open(waUrl, '_blank');
+    window.location.href = waUrl;
   };
 
   const handleCancelSession = () => {
@@ -521,14 +531,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
               </div>
 
               <h3 className="text-base font-extrabold text-[#141416] mt-4">
-                Waiting for WhatsApp Send...
+                Send Code via WhatsApp
               </h3>
-              <p className="text-xs text-zinc-500 mt-1 max-w-[240px] leading-relaxed">
-                We opened WhatsApp with your code. Send it from{' '}
+              <p className="text-xs text-zinc-500 mt-1 max-w-[260px] leading-relaxed">
+                Tap the button below to send your code to our official bot from{' '}
                 <span className="font-bold text-[#141416]">+{fullPhone}</span> to verify.
               </p>
 
-              <div className="mt-4 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-800 text-xs font-mono font-bold tracking-wider">
+              <div className="mt-3 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-800 text-xs font-mono font-bold tracking-wider">
                 {session.auth_code}
               </div>
 
@@ -536,10 +546,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
                 <button
                   type="button"
                   onClick={handleReopenWhatsApp}
-                  className="w-full h-10 rounded-xl bg-[#141416] text-[#FFEA00] font-bold text-xs flex items-center justify-center gap-2 active:scale-98 transition shadow-xs cursor-pointer"
+                  className="w-full h-11 rounded-2xl bg-[#25D366] hover:bg-[#20BD5A] text-white font-extrabold text-xs flex items-center justify-center gap-2 active:scale-98 transition shadow-md shadow-emerald-500/20 cursor-pointer"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Re-open WhatsApp</span>
+                  <WhatsAppIcon className="w-5 h-5 fill-current" />
+                  <span>Open WhatsApp &amp; Send Code</span>
                 </button>
 
                 <button
@@ -548,7 +558,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
                   className="w-full h-9 rounded-xl text-zinc-500 hover:text-zinc-800 font-semibold text-xs flex items-center justify-center gap-1 transition cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
-                  <span>Cancel</span>
+                  <span>Cancel / Change Number</span>
                 </button>
               </div>
             </div>

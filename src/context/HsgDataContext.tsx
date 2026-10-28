@@ -531,10 +531,22 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
               ...prev,
               user: {
                 ...uData.user,
-                wallet_balance: Number(uData.user.wallet_balance || 0),
-                points_balance: Number(uData.user.points_balance || 0),
-                pending_balance: Number(uData.user.pending_balance || 0),
-                pending_points: Number(uData.user.pending_points || 0),
+                wallet_balance:
+                  prev.user?.wallet_balance !== undefined
+                    ? prev.user.wallet_balance
+                    : Number(uData.user.wallet_balance || 0),
+                points_balance:
+                  prev.user?.points_balance !== undefined
+                    ? prev.user.points_balance
+                    : Number(uData.user.points_balance || 0),
+                pending_balance:
+                  prev.user?.pending_balance !== undefined
+                    ? prev.user.pending_balance
+                    : Number(uData.user.pending_balance || 0),
+                pending_points:
+                  prev.user?.pending_points !== undefined
+                    ? prev.user.pending_points
+                    : Number(uData.user.pending_points || 0),
               },
             }));
           } else {
@@ -612,20 +624,38 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
             }
           });
 
-          setDb((prev) => ({
-            ...prev,
-            transactions: txs,
-            merch_orders: liveOrders.length > 0 ? liveOrders : prev.merch_orders || [],
-            user: prev.user
-              ? {
-                  ...prev.user,
-                  wallet_balance: Math.max(0, Number(walletCash.toFixed(2))),
-                  points_balance: Math.max(0, Math.round(walletPts)),
-                  pending_balance: Math.max(0, Number(pendingCashFromTxs.toFixed(2))),
-                  pending_points: Math.max(0, Math.round(pendingPtsFromTxs)),
-                }
-              : prev.user,
-          }));
+          setDb((prev) => {
+            const nextWalletCash = Math.max(0, Number(walletCash.toFixed(2)));
+            const nextWalletPts = Math.max(0, Math.round(walletPts));
+            const nextPendingCash = Math.max(0, Number(pendingCashFromTxs.toFixed(2)));
+            const nextPendingPts = Math.max(0, Math.round(pendingPtsFromTxs));
+
+            if (
+              prev.user &&
+              prev.user.wallet_balance === nextWalletCash &&
+              prev.user.points_balance === nextWalletPts &&
+              prev.user.pending_balance === nextPendingCash &&
+              prev.user.pending_points === nextPendingPts &&
+              prev.transactions.length === txs.length
+            ) {
+              return prev; // Prevents 15s balance flicker/blip
+            }
+
+            return {
+              ...prev,
+              transactions: txs,
+              merch_orders: liveOrders.length > 0 ? liveOrders : prev.merch_orders || [],
+              user: prev.user
+                ? {
+                    ...prev.user,
+                    wallet_balance: nextWalletCash,
+                    points_balance: nextWalletPts,
+                    pending_balance: nextPendingCash,
+                    pending_points: nextPendingPts,
+                  }
+                : prev.user,
+            };
+          });
         }
       }
     } catch (e) {

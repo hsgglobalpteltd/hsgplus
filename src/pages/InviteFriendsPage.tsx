@@ -180,12 +180,53 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
     }
   }, [showClaimModal]);
 
-  const handleCopyCode = async () => {
+  const copyTextToClipboard = async (text: string): Promise<boolean> => {
+    if (!text || text === '------') return false;
+
+    // 1. Modern Clipboard API
+    if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (err) {
+        console.warn('[Clipboard] Modern writeText failed, trying execCommand fallback:', err);
+      }
+    }
+
+    // 2. DOM execCommand fallback (Universal support for iOS Safari, WebViews & non-secure contexts)
     try {
-      await navigator.clipboard.writeText(userCode);
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    } catch {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.top = '0';
+      textArea.style.left = '-9999px';
+      textArea.style.width = '2em';
+      textArea.style.height = '2em';
+      textArea.style.padding = '0';
+      textArea.style.border = 'none';
+      textArea.style.outline = 'none';
+      textArea.style.boxShadow = 'none';
+      textArea.style.background = 'transparent';
+      textArea.setAttribute('readonly', '');
+
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      textArea.setSelectionRange(0, 99999); // Essential for iOS Safari selection
+
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return successful;
+    } catch (fallbackErr) {
+      console.error('[Clipboard] Fallback execCommand failed:', fallbackErr);
+      return false;
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (!userCode || userCode === '------') return;
+    const success = await copyTextToClipboard(userCode);
+    if (success) {
       setCopiedCode(true);
       setTimeout(() => setCopiedCode(false), 2000);
     }
