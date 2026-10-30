@@ -46,10 +46,56 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
   // Velocity Question (1 to 10 selection)
   const [velocityAnswer, setVelocityAnswer] = useState<number | null>(null);
 
-  // Custom campaign questions answers (indexed by question id or key)
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [isSending, setIsSending] = useState<boolean>(false);
   const [isMilestonesExpanded, setIsMilestonesExpanded] = useState<boolean>(false);
+  const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
+  const milestonesCardRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Fast and smooth slide open with automatic bottom scroll
+  const toggleMilestones = () => {
+    setIsMilestonesExpanded((prev) => {
+      const next = !prev;
+      if (next) {
+        // Fast next-frame execution: smoothly scroll container to the bottom
+        requestAnimationFrame(() => {
+          const scrollContainer =
+            milestonesCardRef.current?.closest('main') ||
+            (document.querySelector('main') as HTMLElement) ||
+            window;
+
+          if ('scrollTo' in scrollContainer) {
+            scrollContainer.scrollTo({
+              top: (scrollContainer as HTMLElement).scrollHeight || 9999,
+              behavior: 'smooth',
+            });
+          }
+        });
+      }
+      return next;
+    });
+  };
+
+  // Auto-scroll input into center view when tapped/focused to prevent keyboard covering
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    setIsKeyboardActive(true);
+    const target = e.currentTarget;
+    // Delay slightly so mobile virtual keyboard has time to open and resize viewport
+    window.setTimeout(() => {
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest',
+      });
+    }, 280);
+  };
+
+  const handleInputBlur = () => {
+    // Delay hiding keyboard spacer slightly to avoid abrupt layout jump
+    window.setTimeout(() => {
+      setIsKeyboardActive(false);
+    }, 150);
+  };
 
   useEffect(() => {
     if (activeCampaign) {
@@ -86,20 +132,59 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
     });
   };
 
-  // Fixed reward label
+  // Reward label (Calculates dynamic percent/spend-based rewards from a $50 benchmark purchase with 'Up to')
   const rewardLabel = React.useMemo(() => {
     if (!activeCampaign) return '';
-    const rType = (activeCampaign as any).reward_type || activeCampaign.purchase_reward_mode || 'cashback';
-    const rCash = Number((activeCampaign as any).reward_cash !== undefined ? (activeCampaign as any).reward_cash : (activeCampaign.cashback_amount || 0));
-    const rPoints = Number((activeCampaign as any).reward_points || 0);
+    const r = (activeCampaign as any).reward || {};
+    const rType = r.type || (activeCampaign as any).reward_type || activeCampaign.purchase_reward_mode || 'cashback';
 
-    if (rType === 'both') {
-      return `+$${rCash.toFixed(2)} Cash & +${rPoints} Pts`;
+    const cbMode = r.cashback_mode || (activeCampaign as any).cashback_mode || 'flat';
+    const cbVal = Number(
+      r.cashback_value !== undefined
+        ? r.cashback_value
+        : (activeCampaign as any).cashback_value !== undefined
+        ? (activeCampaign as any).cashback_value
+        : ((activeCampaign as any).reward_cash ?? (activeCampaign.cashback_amount || 0))
+    );
+
+    const ptMode = r.point_mode || (activeCampaign as any).point_mode || 'flat';
+    const ptVal = Number(
+      r.point_value !== undefined
+        ? r.point_value
+        : (activeCampaign as any).point_value !== undefined
+        ? (activeCampaign as any).point_value
+        : ((activeCampaign as any).reward_points || 0)
+    );
+
+    const BENCHMARK_SPEND = 50; // $50 spend benchmark for calculation
+
+    const isDynamicCash = cbMode === 'percent';
+    const isDynamicPoints = ptMode === 'ratio' || ptMode === 'spend';
+
+    const calcCash = isDynamicCash ? (BENCHMARK_SPEND * cbVal) / 100 : cbVal;
+    const calcPoints = isDynamicPoints ? Math.floor(BENCHMARK_SPEND * ptVal) : ptVal;
+
+    const effectiveType =
+      rType === 'both' || (cbVal > 0 && ptVal > 0)
+        ? 'both'
+        : rType === 'points' || (ptVal > 0 && cbVal === 0 && !isDynamicCash)
+        ? 'points'
+        : 'cashback';
+
+    const isDynamic =
+      (effectiveType === 'both' && (isDynamicCash || isDynamicPoints)) ||
+      (effectiveType === 'cashback' && isDynamicCash) ||
+      (effectiveType === 'points' && isDynamicPoints);
+
+    const prefix = isDynamic ? 'Up to ' : '';
+
+    if (effectiveType === 'both') {
+      return `${prefix}+$${calcCash.toFixed(2)} Cash & +${calcPoints} Pts`;
     }
-    if (rType === 'points') {
-      return `+${rPoints || rCash} Points`;
+    if (effectiveType === 'points') {
+      return `${prefix}+${calcPoints} Points`;
     }
-    return `+$${rCash.toFixed(2)} Cashback`;
+    return `${prefix}+$${calcCash.toFixed(2)} Cashback`;
   }, [activeCampaign]);
 
   // Velocity question is enabled by default unless explicitly disabled
@@ -330,7 +415,7 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
     '';
 
   return (
-    <div className="w-full flex flex-col space-y-4 pb-24">
+    <div className="w-full flex flex-col space-y-4 pb-4">
       {/* 0. MULTI-CAMPAIGN SCROLLABLE PILL BAR (Max 4 Active Campaigns, Brand + Reward) */}
       {activeCampaigns && activeCampaigns.length > 1 && (
         <div className="w-full px-4 pt-0.5">
@@ -430,7 +515,7 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                 <span className="font-extrabold uppercase tracking-wide text-[#EC008C]">
                   {(activeCampaign as any).brand || activeCampaign.brand_name || 'BOOM+'}
                 </span>
-                <span className="font-black text-xs text-[#141416] bg-white/80 px-2 py-0.5 rounded-full shadow-2xs">
+                <span className="font-black text-xs text-[#141416] bg-white/80 px-2 py-0.5 rounded-full shadow-2xs whitespace-nowrap shrink-0">
                   {rewardLabel}
                 </span>
               </div>
@@ -473,129 +558,6 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
           </div>
 
           <div className="px-4 space-y-4">
-            {/* 1.5. STORE VISIT MILESTONES ("More Stores, More Rewards") */}
-            {storeVisitMilestones.length > 0 && (
-              <div className="w-full rounded-2xl bg-white shadow-xs border border-zinc-200/80 overflow-hidden transition-all">
-                {/* Header (Accordion Toggle) */}
-                <button
-                  type="button"
-                  onClick={() => setIsMilestonesExpanded((prev) => !prev)}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-zinc-50/70 active:bg-zinc-100/60 transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                    <div className="w-7 h-7 rounded-lg bg-pink-50 text-[#EC008C] flex items-center justify-center shrink-0 border border-pink-100">
-                      <Gift className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-zinc-900 truncate">
-                        More Stores, More Rewards
-                      </div>
-                      <p className="text-[10px] text-zinc-500 font-normal truncate">
-                        Shop at different stores to unlock bonus rewards
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-zinc-600 border border-slate-200 whitespace-nowrap">
-                      {differentStoresCount} {differentStoresCount === 1 ? 'Store' : 'Stores'}
-                    </span>
-                    <ChevronDown
-                      className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${
-                        isMilestonesExpanded ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </div>
-                </button>
-
-                {/* Collapsible Content */}
-                {isMilestonesExpanded && (
-                  <div className="px-3.5 pb-3.5 pt-1 space-y-2.5 border-t border-zinc-100 animate-in fade-in duration-200">
-                    {/* Top Metrics Bar: Clean & compact */}
-                    <div className="grid grid-cols-2 gap-2 p-2 rounded-xl bg-zinc-50/80 border border-zinc-100">
-                      <div className="flex items-center gap-2 px-1 min-w-0">
-                        <Receipt className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <div className="min-w-0 flex items-baseline gap-1.5 whitespace-nowrap">
-                          <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Receipts:</span>
-                          <span className="text-xs font-bold text-zinc-800">{totalReceipts}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 px-1 border-l border-zinc-200 min-w-0">
-                        <Store className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <div className="min-w-0 flex items-baseline gap-1.5 whitespace-nowrap">
-                          <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Diff. Stores:</span>
-                          <span className="text-xs font-bold text-zinc-800">{differentStoresCount}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Milestone Stepper Tiers - Strict 1-Line per Tier, Clean Font Weights */}
-                    <div className="space-y-1.5">
-                      {storeVisitMilestones.map((tier: any) => {
-                        const isUnlocked = tier.isUnlocked;
-                        const remaining = Math.max(0, tier.stores - differentStoresCount);
-
-                        return (
-                          <div
-                            key={tier.tier}
-                            className={`h-9 px-2.5 rounded-xl border transition flex items-center justify-between gap-2 whitespace-nowrap ${
-                              isUnlocked
-                                ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
-                                : 'bg-white border-zinc-200/70 text-zinc-800'
-                            }`}
-                          >
-                            {/* Left: Step Badge + Target + Status (Single Line, No Wrap) */}
-                            <div className="flex items-center gap-2 min-w-0 overflow-hidden whitespace-nowrap">
-                              <div
-                                className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                                  isUnlocked
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-zinc-100 text-zinc-600'
-                                }`}
-                              >
-                                {isUnlocked ? (
-                                  <Check className="w-3 h-3 stroke-[2.5]" />
-                                ) : (
-                                  `#${tier.tier}`
-                                )}
-                              </div>
-
-                              <span className="text-xs font-semibold text-zinc-800 whitespace-nowrap">
-                                Visit {tier.stores} Stores
-                              </span>
-
-                              {isUnlocked ? (
-                                <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-0.5 whitespace-nowrap">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                                  Unlocked
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-zinc-400 font-normal whitespace-nowrap">
-                                  ({remaining} more)
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Right: Reward Capsule */}
-                            <div
-                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border shrink-0 whitespace-nowrap ${
-                                isUnlocked
-                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                  : 'bg-[#FFEA00]/30 text-zinc-900 border-[#FFEA00]/80'
-                              }`}
-                            >
-                              {tier.rewardText}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* 2. UPLOAD PURCHASE RECEIPT */}
             <div className="w-full p-5 rounded-3xl bg-white shadow-xs">
               <div className="flex items-center justify-between mb-3">
@@ -706,6 +668,8 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                     min="0.01"
                     required
                     value={totalAmount}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
                     onChange={(e) =>
                       setTotalAmount(e.target.value === '' ? '' : parseFloat(e.target.value))
                     }
@@ -724,6 +688,8 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                   min="1"
                   required
                   value={qty}
+                  onFocus={handleInputFocus}
+                  onBlur={handleInputBlur}
                   onChange={(e) =>
                     setQty(e.target.value === '' ? '' : parseInt(e.target.value, 10))
                   }
@@ -787,6 +753,8 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                   type="text"
                   placeholder="Type your answer here..."
                   value={answer}
+                  onFocus={handleInputFocus}
+                  onBlur={handleInputBlur}
                   onChange={(e) =>
                     setCustomAnswers((prev) => ({
                       ...prev,
@@ -806,6 +774,176 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
           >
             Submit Receipt & Claim Reward
           </button>
+
+          {/* STORE VISIT MILESTONES ("More Stores, More Rewards") - Placed under submit button */}
+          {storeVisitMilestones.length > 0 && (
+            <div ref={milestonesCardRef} className="w-full relative mt-1">
+              <div className="w-full rounded-2xl bg-white shadow-xs border border-zinc-200/80 overflow-hidden transition-all">
+                {/* Header (Top Row: Title, Wrapped Subtext, Store Badge) */}
+                <div
+                  onClick={toggleMilestones}
+                  className="p-3.5 pb-3 hover:bg-zinc-50/60 active:bg-zinc-100/50 transition cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold text-zinc-900 leading-tight">
+                        More Stores, More Rewards
+                      </div>
+                      <p className="text-[10px] text-zinc-500 font-normal mt-1 leading-normal">
+                        Shop at different stores to unlock bonus rewards
+                      </p>
+                    </div>
+
+                    {/* Store Icon + Count (Clean, No Background/Border, Same Color) */}
+                    <div className="flex items-center gap-1.5 shrink-0 text-zinc-700 pt-0.5">
+                      <Store className="w-4 h-4 text-zinc-600 shrink-0" />
+                      <span className="text-sm font-bold text-zinc-800 leading-none">
+                        {differentStoresCount}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Collapsible Content */}
+                {isMilestonesExpanded && (
+                  <div className="px-3.5 pb-3 pt-1 space-y-2.5 border-t border-zinc-100 animate-in fade-in duration-200">
+                    {/* Top Metrics Bar: Clean & compact */}
+                    <div className="grid grid-cols-2 gap-2 p-2 rounded-xl bg-zinc-50/80 border border-zinc-100">
+                      <div className="flex items-center gap-2 px-1 min-w-0">
+                        <Receipt className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        <div className="min-w-0 flex items-baseline gap-1.5 whitespace-nowrap">
+                          <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Receipts:</span>
+                          <span className="text-xs font-bold text-zinc-800">{totalReceipts}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 px-1 border-l border-zinc-200 min-w-0">
+                        <Store className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        <div className="min-w-0 flex items-baseline gap-1.5 whitespace-nowrap">
+                          <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Diff. Stores:</span>
+                          <span className="text-xs font-bold text-zinc-800">{differentStoresCount}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Milestone Stepper Tiers - Strict 1-Line per Tier, Clean Font Weights */}
+                    <div className="space-y-1.5">
+                      {storeVisitMilestones.map((tier: any) => {
+                        const isUnlocked = tier.isUnlocked;
+                        const remaining = Math.max(0, tier.stores - differentStoresCount);
+
+                        return (
+                          <div
+                            key={tier.tier}
+                            className={`h-9 px-2.5 rounded-xl border transition flex items-center justify-between gap-2 whitespace-nowrap ${
+                              isUnlocked
+                                ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                                : 'bg-white border-zinc-200/70 text-zinc-800'
+                            }`}
+                          >
+                            {/* Left: Step Badge + Target + Status (Single Line, No Wrap) */}
+                            <div className="flex items-center gap-2 min-w-0 overflow-hidden whitespace-nowrap">
+                              <div
+                                className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                                  isUnlocked
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-zinc-100 text-zinc-600'
+                                }`}
+                              >
+                                {isUnlocked ? (
+                                  <Check className="w-3 h-3 stroke-[2.5]" />
+                                ) : (
+                                  `#${tier.tier}`
+                                )}
+                              </div>
+
+                              <span className="text-xs font-semibold text-zinc-800 whitespace-nowrap">
+                                Visit {tier.stores} Stores
+                              </span>
+
+                              {isUnlocked ? (
+                                <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-0.5 whitespace-nowrap">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                                  Unlocked
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-zinc-400 font-normal whitespace-nowrap">
+                                  ({remaining} more)
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Right: Reward Capsule */}
+                            <div
+                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border shrink-0 whitespace-nowrap ${
+                                isUnlocked
+                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                  : 'bg-[#FFEA00]/30 text-zinc-900 border-[#FFEA00]/80'
+                              }`}
+                            >
+                              {tier.rewardText}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Exact Bell-Curved Bottom Scoop / Tab with Ultra-Smooth Organic Curve on All Sides */}
+              <div className="absolute left-1/2 -translate-x-1/2 -bottom-[19px] z-20 flex flex-col items-center">
+                <button
+                  type="button"
+                  onClick={toggleMilestones}
+                  className="relative group cursor-pointer focus:outline-none"
+                  aria-label={isMilestonesExpanded ? 'Collapse milestones' : 'Expand milestones'}
+                >
+                  {/* White background block mask to erase the parent card's bottom border under the curve */}
+                  <div className="absolute -top-[2px] left-[6px] right-[6px] h-[4px] bg-white pointer-events-none z-10" />
+
+                  {/* Ultra-rounded organic scoop: 80px wide by 20px high with generous, continuous curve transitions */}
+                  <svg
+                    width="80"
+                    height="20"
+                    viewBox="0 0 80 20"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.03)] relative z-20"
+                  >
+                    {/* Seamless White Fill */}
+                    <path
+                      d="M 0 0 C 14 0, 18 19, 30 19 C 36 19, 44 19, 50 19 C 62 19, 66 0, 80 0 Z"
+                      fill="#FFFFFF"
+                    />
+                    {/* Smooth hairline outline trace on the curve only */}
+                    <path
+                      d="M 0 0 C 14 0, 18 19, 30 19 C 36 19, 44 19, 50 19 C 62 19, 66 0, 80 0"
+                      stroke="#E4E4E7"
+                      strokeWidth="1"
+                      strokeLinecap="round"
+                      fill="none"
+                    />
+                  </svg>
+                  {/* Chevron Icon centered inside the scoop */}
+                  <div className="absolute inset-0 flex items-center justify-center pt-0.5 pointer-events-none z-30">
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 group-hover:text-zinc-800 ${
+                        isMilestonesExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Virtual Keyboard Spacer Cushion (Prevents keyboard from covering input) */}
+          <div
+            className={`transition-all duration-300 pointer-events-none ${
+              isKeyboardActive ? 'h-64' : 'h-2'
+            }`}
+          />
         </div>
       </form>
       )}

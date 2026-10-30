@@ -1,9 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownLeft,
   ArrowLeft,
+  ArrowUp,
   ArrowUpRight,
   Award,
+  Check,
+  ChevronDown,
+  Loader2,
   ShoppingBag,
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
@@ -12,6 +16,7 @@ import { HsgTransaction } from '../types';
 interface TransactionHistoryPageProps {
   onBack: () => void;
   initialTab?: 'cashback' | 'points';
+  scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function getSimpleTxLabel(
@@ -83,9 +88,35 @@ export function getSimpleTxLabel(
 
 export const SimpleTransactionList: React.FC<{
   initialTab?: 'cashback' | 'points';
-}> = ({ initialTab = 'cashback' }) => {
+  scrollContainerRef?: React.RefObject<HTMLElement | null>;
+}> = ({ initialTab = 'cashback', scrollContainerRef }) => {
   const { db, isAuthenticated } = useHsgData();
   const [activeTab, setActiveTab] = useState<'cashback' | 'points'>(initialTab);
+
+  // Pagination state: First load 10 cards, +10 each pull/load
+  const PAGE_SIZE = 10;
+  const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
+  // Pull-to-load-more touch state
+  const [pullDistance, setPullDistance] = useState<number>(0);
+  const [isPulling, setIsPulling] = useState<boolean>(false);
+  const touchStartY = useRef<number | null>(null);
+
+  // Card element refs & animation scales for bottom shrink effect
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [scales, setScales] = useState<{ [index: number]: number }>({});
+  const [opacities, setOpacities] = useState<{ [index: number]: number }>({});
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  // Reset pagination when active tab changes
+  const handleTabChange = (tab: 'cashback' | 'points') => {
+    setActiveTab(tab);
+    setVisibleCount(PAGE_SIZE);
+    setPullDistance(0);
+    setIsPulling(false);
+  };
 
   // Deduplicate transactions by reference_id so pending -> verified stays on the exact same row
   const unifiedTransactions = useMemo(() => {
@@ -198,6 +229,132 @@ export const SimpleTransactionList: React.FC<{
     });
   }, [unifiedTransactions, activeTab]);
 
+  // Sliced 10-card paginated subset
+  const displayedRows = useMemo(() => {
+    return filteredRows.slice(0, visibleCount);
+  }, [filteredRows, visibleCount]);
+
+  const hasMore = visibleCount < filteredRows.length;
+
+  const getScrollContainer = useCallback((): HTMLElement | null => {
+    if (scrollContainerRef?.current) return scrollContainerRef.current;
+    if (listContainerRef.current) {
+      const mainEl = listContainerRef.current.closest('main');
+      if (mainEl) return mainEl as HTMLElement;
+    }
+    return document.documentElement;
+  }, [scrollContainerRef]);
+
+  // Dynamic Scroll Perspective: Cards near the bottom edge scale down slightly
+  const updateCardScales = useCallback(() => {
+    const scrollEl = getScrollContainer();
+    const containerBottom = scrollEl
+      ? scrollEl.getBoundingClientRect().bottom
+      : window.innerHeight;
+
+    const newScales: { [index: number]: number } = {};
+    const newOpacities: { [index: number]: number } = {};
+
+    cardRefs.current.forEach((el, index) => {
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const distanceToBottom = containerBottom - rect.bottom;
+
+      // When the card is within 140px of bottom, subtly scale down and soften opacity
+      if (distanceToBottom < 130) {
+        const factor = Math.max(0, Math.min(1.4, (130 - distanceToBottom) / 130));
+        // Scale smoothly from 1.0 down to 0.92
+        const s = Number((1 - factor * 0.08).toFixed(3));
+        // Opacity smoothly from 1.0 down to 0.82
+        const o = Number((1 - factor * 0.18).toFixed(3));
+        newScales[index] = s;
+        newOpacities[index] = o;
+      } else {
+        newScales[index] = 1;
+        newOpacities[index] = 1;
+      }
+    });
+
+    setScales(newScales);
+    setOpacities(newOpacities);
+  }, [getScrollContainer]);
+
+  useEffect(() => {
+    const scrollEl = getScrollContainer();
+    if (!scrollEl) return;
+
+    const handleScroll = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(updateCardScales);
+    };
+
+    // Initial scale calculation
+    handleScroll();
+
+    scrollEl.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
+
+    return () => {
+      scrollEl.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [getScrollContainer, updateCardScales, displayedRows.length]);
+
+  // Trigger load 10 more cards
+  const triggerLoadMore = useCallback(() => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    setIsPulling(false);
+
+    window.setTimeout(() => {
+      setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredRows.length));
+      setIsLoadingMore(false);
+      setPullDistance(0);
+    }, 320);
+  }, [isLoadingMore, hasMore, filteredRows.length]);
+
+  // Touch Pull-Up Gesture Handlers (Active when user reaches the bottom of the list)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isLoadingMore || !hasMore) return;
+    const scrollEl = getScrollContainer();
+    if (!scrollEl) return;
+
+    const isNearBottom =
+      scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 30;
+    if (isNearBottom) {
+      touchStartY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartY.current === null || isLoadingMore || !hasMore) return;
+    const currentY = e.touches[0].clientY;
+    const diffY = touchStartY.current - currentY; // Positive when pulling UP
+
+    if (diffY > 0) {
+      setIsPulling(true);
+      // Damped rubber-band resistance
+      const damped = Math.min(75, Math.pow(diffY, 0.82) * 1.6);
+      setPullDistance(damped);
+    } else {
+      setPullDistance(0);
+      setIsPulling(false);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartY.current === null) return;
+    touchStartY.current = null;
+
+    if (pullDistance >= 40 && hasMore && !isLoadingMore) {
+      triggerLoadMore();
+    } else {
+      setPullDistance(0);
+      setIsPulling(false);
+    }
+  };
+
   const formatDateTime = (ts: number) => {
     const d = new Date(ts);
     const datePart = d.toLocaleDateString('en-GB', {
@@ -214,12 +371,18 @@ export const SimpleTransactionList: React.FC<{
   };
 
   return (
-    <div className="w-full space-y-3">
+    <div
+      ref={listContainerRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="w-full space-y-3"
+    >
       {/* 2-TAB SWITCHER: Cashback | Points */}
       <div className="w-full grid grid-cols-2 gap-1.5 p-1 rounded-full bg-white shadow-2xs border border-slate-100">
         <button
           type="button"
-          onClick={() => setActiveTab('cashback')}
+          onClick={() => handleTabChange('cashback')}
           className={`h-9 rounded-full text-xs font-bold transition cursor-pointer ${
             activeTab === 'cashback'
               ? 'bg-[#141416] text-[#FFEA00]'
@@ -230,7 +393,7 @@ export const SimpleTransactionList: React.FC<{
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('points')}
+          onClick={() => handleTabChange('points')}
           className={`h-9 rounded-full text-xs font-bold transition cursor-pointer ${
             activeTab === 'points'
               ? 'bg-[#141416] text-[#FFEA00]'
@@ -241,14 +404,14 @@ export const SimpleTransactionList: React.FC<{
         </button>
       </div>
 
-      {/* SIMPLE CLEAN LIST CARD */}
+      {/* INDIVIDUAL CARD HISTORY LIST WITH SCROLL PERSPECTIVE */}
       {filteredRows.length === 0 ? (
         <div className="w-full py-10 px-4 rounded-2xl bg-white text-center text-xs text-zinc-400 shadow-2xs border border-slate-100/80">
           No {activeTab === 'cashback' ? 'cashback' : 'points'} transactions yet.
         </div>
       ) : (
-        <div className="w-full rounded-2xl bg-white shadow-2xs border border-slate-100/80 divide-y divide-slate-100 overflow-hidden">
-          {filteredRows.map((tx) => {
+        <div className="w-full space-y-2.5">
+          {displayedRows.map((tx, index) => {
             const cashAmt = Number(
               tx.amount_cashback ??
                 tx.net_cashback ??
@@ -257,7 +420,8 @@ export const SimpleTransactionList: React.FC<{
                 0
             );
             const ptsAmt = getPointsAmount(tx);
-            const rawVal = activeTab === 'cashback' ? cashAmt : (ptsAmt > 0 ? ptsAmt : 50);
+            const rawVal =
+              activeTab === 'cashback' ? cashAmt : ptsAmt > 0 ? ptsAmt : 50;
             const isOut =
               tx.direction === 'out' ||
               (activeTab === 'cashback'
@@ -269,10 +433,24 @@ export const SimpleTransactionList: React.FC<{
             const label = getSimpleTxLabel(tx, activeTab);
             const ts = Number(tx.created_at || tx.timestamp || Date.now());
 
+            const scale = scales[index] ?? 1;
+            const opacity = opacities[index] ?? 1;
+
             return (
               <div
                 key={tx.id}
-                className="w-full px-4 py-3.5 flex items-center justify-between gap-3"
+                ref={(el) => {
+                  cardRefs.current[index] = el;
+                }}
+                style={{
+                  transform: `scale(${scale})`,
+                  opacity: opacity,
+                  transformOrigin: 'center bottom',
+                  willChange: 'transform, opacity',
+                  transition:
+                    'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease-out',
+                }}
+                className="w-full px-4 py-3.5 rounded-2xl bg-white shadow-2xs border border-slate-100/80 flex items-center justify-between gap-3 animate-in fade-in duration-200"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-9 h-9 rounded-full bg-zinc-100 text-zinc-700 flex items-center justify-center shrink-0">
@@ -297,7 +475,7 @@ export const SimpleTransactionList: React.FC<{
                   </div>
                 </div>
 
-                {/* Right-Aligned Amount: Orange when pending, Green once verified, Dark when withdrawal/out */}
+                {/* Right-Aligned Amount */}
                 <div
                   className={`text-sm font-extrabold tracking-tight tabular-nums shrink-0 ${
                     isRejected
@@ -320,6 +498,67 @@ export const SimpleTransactionList: React.FC<{
               </div>
             );
           })}
+
+          {/* BOTTOM PULL / LOAD MORE INTERACTION CARD */}
+          {hasMore ? (
+            <div
+              style={{
+                transform: isPulling
+                  ? `translateY(-${Math.min(pullDistance * 0.35, 20)}px)`
+                  : undefined,
+                transition: isPulling ? 'none' : 'transform 0.25s ease-out',
+              }}
+              className="pt-3 pb-6 flex flex-col items-center justify-center text-center"
+            >
+              <button
+                type="button"
+                onClick={triggerLoadMore}
+                disabled={isLoadingMore}
+                className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-2xs flex items-center gap-2 cursor-pointer ${
+                  pullDistance >= 40
+                    ? 'bg-[#141416] text-[#FFEA00] scale-105'
+                    : 'bg-white text-zinc-700 hover:text-zinc-900 border border-slate-200/80 active:scale-95'
+                }`}
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
+                    <span>Loading 10 more...</span>
+                  </>
+                ) : isPulling ? (
+                  <>
+                    <ArrowUp
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        pullDistance >= 40
+                          ? 'rotate-180 text-[#FFEA00]'
+                          : 'text-zinc-400'
+                      }`}
+                    />
+                    <span>
+                      {pullDistance >= 40
+                        ? 'Release to load 10 more'
+                        : 'Pull up to load more'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Pull or Tap for 10 More</span>
+                    <span className="text-[10px] text-zinc-400 font-normal">
+                      ({displayedRows.length} of {filteredRows.length})
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : filteredRows.length > 0 ? (
+            <div className="pt-3 pb-6 text-center">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100/80 text-[11px] font-semibold text-zinc-400">
+                <Check className="w-3 h-3 text-emerald-500" />
+                <span>All {filteredRows.length} transactions loaded</span>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -329,6 +568,7 @@ export const SimpleTransactionList: React.FC<{
 export const TransactionHistoryPage: React.FC<TransactionHistoryPageProps> = ({
   onBack,
   initialTab = 'cashback',
+  scrollContainerRef,
 }) => {
   return (
     <div className="w-full px-5 pt-2 pb-6 space-y-4">
@@ -348,8 +588,11 @@ export const TransactionHistoryPage: React.FC<TransactionHistoryPageProps> = ({
         <div className="w-9 h-9" />
       </div>
 
-      {/* 2-Tab Simple Transaction List */}
-      <SimpleTransactionList initialTab={initialTab} />
+      {/* 2-Tab Simple Transaction List with Bottom Scale & Pull-to-Load-More */}
+      <SimpleTransactionList
+        initialTab={initialTab}
+        scrollContainerRef={scrollContainerRef}
+      />
     </div>
   );
 };

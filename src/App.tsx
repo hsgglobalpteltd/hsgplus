@@ -591,6 +591,7 @@ const HsgMobileShell: React.FC = () => {
             <TransactionHistoryPage
               initialTab={txHistoryTab}
               onBack={() => navigateTo('account')}
+              scrollContainerRef={mainScrollRef}
             />
           )}
           {route === 'account' && (
@@ -684,7 +685,7 @@ const HsgMobileShell: React.FC = () => {
                       fill="none"
                     />
                   </defs>
-                  {/* Curved "Scan Receipt & Earn Cashback" Text */}
+                  {/* Curved "Scan Receipt & Earn Reward" Text */}
                   <text
                     fill="#141416"
                     fontSize="6.8"
@@ -697,7 +698,7 @@ const HsgMobileShell: React.FC = () => {
                       startOffset="50%"
                       textAnchor="middle"
                     >
-                      Scan Receipt &amp; Earn Cashback
+                      Scan Receipt &amp; Earn Reward
                     </textPath>
                   </text>
                 </svg>

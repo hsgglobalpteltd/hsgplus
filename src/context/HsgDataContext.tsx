@@ -1054,7 +1054,46 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     checkUrlAuth();
     window.addEventListener('focus', checkUrlAuth);
-    return () => window.removeEventListener('focus', checkUrlAuth);
+
+    // Cross-tab real-time sync for login & logout (Storage Event & BroadcastChannel)
+    const handleStorageChange = (e: StorageEvent) => {
+      // Only care about auth keys or storage purge
+      if (
+        e.key === 'hsg_auth_phone' ||
+        e.key === 'hsg_auth_user_id' ||
+        e.key === null // storage.clear() or multi-key purge
+      ) {
+        const newPhone = localStorage.getItem('hsg_auth_phone') || '';
+        const newUserId = localStorage.getItem('hsg_auth_user_id') || '';
+
+        if (!newPhone && !newUserId) {
+          // Logged out in another tab
+          setDb((prev) => ({
+            ...prev,
+            user: null,
+            history: [],
+            transactions: [],
+            cashback_claims: [],
+            notifications: [],
+            events: (prev.events || []).map((ev) => ({ ...ev, user_status: 'none' })),
+          }));
+          setIsAuthenticated(false);
+        } else {
+          // Logged in or switched user in another tab
+          setIsAuthenticated(true);
+          syncLiveUsers();
+          syncLiveTransactions(newPhone);
+          syncLiveCashback();
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('focus', checkUrlAuth);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const logout = () => {

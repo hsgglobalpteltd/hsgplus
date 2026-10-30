@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Clock,
   EyeOff,
+  Loader2,
   MapPin,
   QrCode,
   ScanLine,
@@ -238,8 +239,11 @@ export const EventsPage: React.FC<EventsPageProps> = ({
     null
   );
 
-  // Default: 0 old events shown. Each pull loads 5 old events at once.
+  // Default: 0 old events shown. Each pull loads 10 old events at once.
   const [loadedPastCount, setLoadedPastCount] = useState<number>(0);
+  const [isPullingPast, setIsPullingPast] = useState<boolean>(false);
+  const [pullPastDistance, setPullPastDistance] = useState<number>(0);
+  const [isLoadingPast, setIsLoadingPast] = useState<boolean>(false);
   const touchStartYRef = useRef<number | null>(null);
 
   const now = Date.now();
@@ -266,6 +270,8 @@ export const EventsPage: React.FC<EventsPageProps> = ({
   const allPastEvents = categoryFilteredEvents
     .filter((e) => Date.now() > getEventTimes(e).end)
     .sort((a, b) => b.date_timestamp - a.date_timestamp);
+
+  const remainingPastCount = Math.max(0, allPastEvents.length - loadedPastCount);
 
   // When a specific calendar date is clicked in the past, show it immediately; otherwise slice by loadedPastCount
   const visiblePastEvents = (
@@ -297,12 +303,18 @@ export const EventsPage: React.FC<EventsPageProps> = ({
     .sort((a, b) => a.date_timestamp - b.date_timestamp);
 
   const handleLoadMorePast = () => {
-    if (loadedPastCount >= allPastEvents.length) {
+    if (loadedPastCount >= allPastEvents.length || isLoadingPast) {
       showToast('All past events loaded');
       return;
     }
-    const nextCount = Math.min(allPastEvents.length, loadedPastCount + 5);
-    setLoadedPastCount(nextCount);
+    setIsLoadingPast(true);
+    setIsPullingPast(false);
+    window.setTimeout(() => {
+      const nextCount = Math.min(allPastEvents.length, loadedPastCount + 10);
+      setLoadedPastCount(nextCount);
+      setIsLoadingPast(false);
+      setPullPastDistance(0);
+    }, 320);
   };
 
   const handleHideOldEvents = () => {
@@ -312,7 +324,10 @@ export const EventsPage: React.FC<EventsPageProps> = ({
     }, 30);
   };
 
+  const isMouseDownRef = useRef<boolean>(false);
+
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isLoadingPast || remainingPastCount <= 0) return;
     if ((scrollContainerRef.current?.scrollTop || 0) <= 5) {
       touchStartYRef.current = e.touches[0].clientY;
     } else {
@@ -320,13 +335,57 @@ export const EventsPage: React.FC<EventsPageProps> = ({
     }
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartYRef.current === null) return;
-    const deltaY = e.changedTouches[0].clientY - touchStartYRef.current;
-    touchStartYRef.current = null;
-    if (deltaY > 65 && (scrollContainerRef.current?.scrollTop || 0) <= 5) {
-      handleLoadMorePast();
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartYRef.current === null || isLoadingPast || remainingPastCount <= 0) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - touchStartYRef.current; // Positive when pulling DOWN
+    if (deltaY > 0 && (scrollContainerRef.current?.scrollTop || 0) <= 5) {
+      setIsPullingPast(true);
+      const damped = Math.min(75, Math.pow(deltaY, 0.82) * 1.5);
+      setPullPastDistance(damped);
+    } else {
+      setPullPastDistance(0);
+      setIsPullingPast(false);
     }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartYRef.current === null) return;
+    touchStartYRef.current = null;
+    if (pullPastDistance >= 40 && remainingPastCount > 0 && !isLoadingPast) {
+      handleLoadMorePast();
+    } else {
+      setPullPastDistance(0);
+      setIsPullingPast(false);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isLoadingPast || remainingPastCount <= 0) return;
+    if ((scrollContainerRef.current?.scrollTop || 0) <= 5) {
+      touchStartYRef.current = e.clientY;
+      isMouseDownRef.current = true;
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || touchStartYRef.current === null || isLoadingPast || remainingPastCount <= 0) return;
+    const currentY = e.clientY;
+    const deltaY = currentY - touchStartYRef.current;
+    if (deltaY > 0 && (scrollContainerRef.current?.scrollTop || 0) <= 5) {
+      setIsPullingPast(true);
+      const damped = Math.min(75, Math.pow(deltaY, 0.82) * 1.5);
+      setPullPastDistance(damped);
+    } else {
+      setPullPastDistance(0);
+      setIsPullingPast(false);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!isMouseDownRef.current) return;
+    isMouseDownRef.current = false;
+    handleTouchEnd();
   };
 
   const formatDate = (ts: number) =>
@@ -917,12 +976,15 @@ export const EventsPage: React.FC<EventsPageProps> = ({
   }
 
   // ALL EVENTS LIST PAGE
-  const remainingPastCount = Math.max(0, allPastEvents.length - loadedPastCount);
-
   return (
     <div
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
       className="w-full px-5 pt-2 pb-6 space-y-4"
     >
       {/* Fee Payment Selection Modal */}
@@ -1180,24 +1242,63 @@ export const EventsPage: React.FC<EventsPageProps> = ({
         </div>
       )}
 
-      {/* TOP PULL-DOWN / HIDE OLD CONTROLS */}
-      {!selectedCalendarDateKey && allPastEvents.length > 0 && (
-        <div className="w-full flex items-center gap-2">
+      {/* TOP PULL-DOWN / HIDE OLD CONTROLS (Hidden by default on first load; reveals when pulling down or when old events are loaded) */}
+      {!selectedCalendarDateKey &&
+        allPastEvents.length > 0 &&
+        (loadedPastCount > 0 || isPullingPast || isLoadingPast || pullPastDistance > 0) && (
+          <div
+            style={{
+              transform: isPullingPast
+                ? `translateY(${Math.min(pullPastDistance * 0.4, 20)}px)`
+                : undefined,
+              opacity: loadedPastCount > 0 ? 1 : Math.min(1, Math.max(0, (pullPastDistance - 6) / 20)),
+              maxHeight: loadedPastCount > 0 ? '60px' : `${Math.min(pullPastDistance * 1.1, 48)}px`,
+              transition: isPullingPast ? 'none' : 'all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            }}
+            className="w-full flex items-center gap-2 overflow-hidden"
+          >
           {remainingPastCount > 0 ? (
             <button
               type="button"
               onClick={handleLoadMorePast}
-              className="flex-1 h-10 px-4 rounded-full bg-white text-xs font-semibold text-[#141416] flex items-center justify-center gap-1.5 shadow-2xs active:scale-[0.99] transition"
+              disabled={isLoadingPast}
+              className={`flex-1 h-10 px-4 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs active:scale-[0.99] transition cursor-pointer ${
+                pullPastDistance >= 40
+                  ? 'bg-[#141416] text-[#FFEA00] scale-[1.02]'
+                  : 'bg-white text-[#141416]'
+              }`}
             >
-              <ArrowDown className="w-3.5 h-3.5 text-[#EC008C]" />
-              <span>
-                Pull down to load {Math.min(5, remainingPastCount)} older events (
-                {loadedPastCount}/{allPastEvents.length})
-              </span>
+              {isLoadingPast ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#EC008C]" />
+                  <span>Loading older events...</span>
+                </>
+              ) : isPullingPast ? (
+                <>
+                  <ArrowDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      pullPastDistance >= 40
+                        ? '-rotate-180 text-[#FFEA00]'
+                        : 'text-[#EC008C]'
+                    }`}
+                  />
+                  <span>
+                    {pullPastDistance >= 40
+                      ? 'Release to load older events'
+                      : 'Pull down to load older events'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="w-3.5 h-3.5 text-[#EC008C]" />
+                  <span>Pull down or tap to load older events</span>
+                </>
+              )}
             </button>
           ) : (
-            <div className="flex-1 h-10 px-4 rounded-full bg-white/70 text-xs font-medium text-zinc-500 flex items-center justify-center">
-              All {allPastEvents.length} past events shown
+            <div className="flex-1 h-10 px-4 rounded-full bg-white/70 text-xs font-medium text-zinc-500 flex items-center justify-center gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-500" />
+              <span>All past events shown</span>
             </div>
           )}
 
@@ -1205,7 +1306,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
             <button
               type="button"
               onClick={handleHideOldEvents}
-              className="h-10 px-4 rounded-full bg-[#141416] text-[#FFEA00] text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs active:scale-95 transition"
+              className="h-10 px-4 rounded-full bg-[#141416] text-[#FFEA00] text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs active:scale-95 transition cursor-pointer"
             >
               <EyeOff className="w-3.5 h-3.5" />
               <span>Hide Old</span>
@@ -1214,29 +1315,20 @@ export const EventsPage: React.FC<EventsPageProps> = ({
         </div>
       )}
 
-      {/* LOADED PAST EVENTS (Hidden by default; loads 5 per pull-down) */}
+      {/* LOADED PAST EVENTS (Hidden by default; loads 10 per pull-down) */}
       {visiblePastEvents.length > 0 && (
         <div className="w-full space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-zinc-500">
-              Past Events ({visiblePastEvents.length})
+              Past Events
             </span>
-            {!selectedCalendarDateKey && (
-              <button
-                type="button"
-                onClick={handleHideOldEvents}
-                className="text-xs font-bold text-[#EC008C]"
-              >
-                Hide Old &uarr;
-              </button>
-            )}
           </div>
 
           {visiblePastEvents.map((ev) => (
             <div
               key={ev.id}
               onClick={() => onSelectEvent(ev.id)}
-              className="w-full p-4 rounded-2xl bg-white flex items-center justify-between gap-3 cursor-pointer shadow-2xs"
+              className="w-full p-4 rounded-2xl bg-white flex items-center justify-between gap-3 cursor-pointer shadow-2xs animate-in fade-in duration-200"
             >
               <div className="min-w-0">
                 <div className="text-[11px] text-zinc-500">
@@ -1353,24 +1445,13 @@ export const EventsPage: React.FC<EventsPageProps> = ({
 
         {/* UPCOMING EVENTS SECTION (Sorted Nearest Date to Top) */}
         <div className="w-full space-y-3">
-          <div className="flex items-baseline justify-between">
-            <div>
-              <h1 className="text-base font-bold text-[#141416]">
-                Upcoming Events ({upcomingEvents.length})
-              </h1>
-              <p className="text-xs text-zinc-500">
-                Sorted by nearest date first
-              </p>
-            </div>
-            {loadedPastCount > 0 && (
-              <button
-                type="button"
-                onClick={handleHideOldEvents}
-                className="text-xs font-bold text-[#EC008C]"
-              >
-                Hide Old
-              </button>
-            )}
+          <div>
+            <h1 className="text-base font-bold text-[#141416]">
+              Upcoming Events ({upcomingEvents.length})
+            </h1>
+            <p className="text-xs text-zinc-500">
+              Sorted by nearest date first
+            </p>
           </div>
 
           {upcomingEvents.length > 0 ? (
