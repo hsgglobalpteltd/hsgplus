@@ -146,8 +146,12 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       '';
     if (!uid) return [];
 
-    return (db.contest_winners || []).filter((w) => w.user_id === uid);
-  }, [isAuthenticated, db.user?.id, db.contest_winners]);
+    return (db.contest_winners || []).filter((w) => {
+      if (w.user_id !== uid) return false;
+      const c = (db.contests || []).find((ct) => ct.id === w.contest_id);
+      return c ? Boolean(c.winners_announced) : false;
+    });
+  }, [isAuthenticated, db.user?.id, db.contest_winners, db.contests]);
 
   const MOCK_AVAILABLE_CASH = 55.0;
   const MOCK_TOTAL_CASH = 88.9;
@@ -336,7 +340,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           id: 'mock-claim-approved',
           category: 'Receipt Claim',
           title: 'Receipt Claim #SS8890 Approved',
-          description: 'Cashback +$55.00 verified and credited to available wallet balance.',
+          description: 'Cashback +$55.00 & +1,000 pts verified and credited to available wallet balance.',
           timestamp: Date.now() - 3600000 * 3,
           badge: { label: 'Verified', variant: 'emerald' },
           iconType: 'check',
@@ -345,7 +349,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           id: 'mock-claim-pending',
           category: 'Receipt Claim',
           title: 'Receipt Claim #SS3390 Submitted',
-          description: 'Receipt uploaded for verification (Est. +$33.90 cashback).',
+          description: 'Receipt uploaded for verification (Est. +$33.90 cashback & +980 pts).',
           timestamp: Date.now() - 3600000 * 12,
           badge: { label: 'Pending Verify', variant: 'amber' },
           iconType: 'receipt',
@@ -373,16 +377,59 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     (db.cashback_claims || [])
       .filter((c) => !currentUserId || !c.user_id || c.user_id === currentUserId)
       .forEach((c) => {
-        const claimAmt = Number(c.cashback_amount ?? c.receipt_amount ?? 0);
+        const matchedTx = (db.transactions || []).find(
+          (tx) =>
+            (c.id && (tx.reference_id === c.id || tx.metadata?.claim_id === c.id)) ||
+            (c.transaction_id && tx.transaction_id === c.transaction_id)
+        );
+
+        const camp = (db.cashback_campaigns || []).find((cmp) => cmp.id === c.campaign_id);
+
+        const claimCash = Number(
+          matchedTx && ((matchedTx.net_cashback ?? 0) > 0 || (matchedTx.amount_cashback ?? 0) > 0)
+            ? (matchedTx.net_cashback ?? matchedTx.amount_cashback ?? matchedTx.cashback_amount ?? matchedTx.amount ?? 0)
+            : (
+                (c as any).reward?.cash ??
+                (c as any).reward?.cashback ??
+                c.cashback_amount ??
+                camp?.reward?.cash ??
+                camp?.reward_cash ??
+                camp?.cashback_amount ??
+                0
+              )
+        );
+
+        const claimPoints = Number(
+          matchedTx && ((matchedTx.net_points ?? 0) > 0 || (matchedTx.amount_points ?? 0) > 0)
+            ? (matchedTx.net_points ?? matchedTx.amount_points ?? matchedTx.points ?? 0)
+            : (
+                (c as any).reward?.points ??
+                (c as any).points ??
+                (c as any).points_amount ??
+                (c as any).reward_points ??
+                camp?.reward?.points ??
+                camp?.reward_points ??
+                0
+              )
+        );
+
         const isApproved = c.status === 'approved' || c.status === 'credited';
         const isRejected = c.status === 'rejected';
+
+        const rewardParts: string[] = [];
+        if (claimCash > 0) rewardParts.push(`+$${claimCash.toFixed(2)} cashback`);
+        if (claimPoints > 0) rewardParts.push(`+${claimPoints.toLocaleString()} pts`);
+        if (rewardParts.length === 0) {
+          rewardParts.push('Cashback & points');
+        }
+        const rewardSummary = rewardParts.join(' & ');
 
         if (isApproved) {
           list.push({
             id: `claim-approved-${c.id}`,
             category: 'Receipt Claim',
             title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Approved`,
-            description: `Cashback +$${claimAmt.toFixed(2)} verified and credited to wallet balance.`,
+            description: `${rewardSummary} verified and credited to wallet balance.`,
             timestamp: Number(c.timestamp || Date.now() - 3600000),
             badge: { label: 'Verified', variant: 'emerald' },
             iconType: 'check',
@@ -404,7 +451,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             id: `claim-pending-${c.id}`,
             category: 'Receipt Claim',
             title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Submitted`,
-            description: `Receipt uploaded for verification (Est. +$${claimAmt.toFixed(2)} cashback).`,
+            description: `Receipt uploaded for verification (Est. ${rewardSummary}).`,
             timestamp: Number(c.timestamp || Date.now() - 7200000),
             badge: { label: 'Pending Verify', variant: 'amber' },
             iconType: 'receipt',
@@ -526,13 +573,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     });
 
     // 2b. Merch Orders Progress (Order Placed -> Preparing -> Delivered)
-    const userPhoneClean = (db.user?.phone_number || '').replace(/\D/g, '');
-    const userPhoneHash = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone_hash') || '') : '';
     const userOrders = (db.merch_orders || []).filter((o) => {
-      if (currentUserId && o.user_id && o.user_id === currentUserId) return true;
-      if (userPhoneClean && o.user_phone && (o.user_phone === userPhoneClean || o.user_phone.endsWith(userPhoneClean))) return true;
-      if (userPhoneHash && o.user_phone && o.user_phone === userPhoneHash) return true;
-      return false;
+      return Boolean(currentUserId && o.user_id && o.user_id === currentUserId);
     });
 
     const processedOrderIds = new Set<string>();
@@ -832,16 +874,26 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     const userLogs = Array.isArray(db.user?.logs) ? db.user!.logs : [];
     let hasRegisterLog = false;
     userLogs.forEach((logItem: any, idx: number) => {
-      if (String(logItem?.action || '').toLowerCase().includes('register')) {
+      const actionLower = String(logItem?.action || '').toLowerCase();
+      const noteLower = String(logItem?.note || '').toLowerCase();
+      if (actionLower.includes('register')) {
         hasRegisterLog = true;
       }
+      const isProfileUpdate =
+        actionLower.includes('profile') ||
+        actionLower.includes('member details') ||
+        noteLower.includes('member details');
+
       list.push({
         id: `db-log-${logItem.timestamp || idx}`,
         category: 'Account',
         title: logItem.action || 'Account Activity',
         description: logItem.note || 'Account event verified.',
         timestamp: Number(logItem.timestamp || Date.now()),
-        badge: { label: 'Verified', variant: 'blue' },
+        badge: {
+          label: isProfileUpdate ? 'Saved' : 'Verified',
+          variant: 'blue',
+        },
         iconType: 'shield',
       });
     });
@@ -886,16 +938,35 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [showWithdrawConfirmModal, setShowWithdrawConfirmModal] = useState<boolean>(false);
 
   // Check if there is an active pending withdrawal in history or transactions
-  const hasPendingWithdrawal = useMemo(() => {
-    return (
-      (db.transactions || []).some(
-        (tx) => tx.type === 'withdrawal' && (tx.status === 'pending' || tx.status === 'requested' || tx.status === 'pending_payout')
-      ) ||
-      (db.history || []).some(
-        (h) => h.type === 'withdrawal' && (h.status === 'pending' || h.status === 'pending_payout')
-      )
+  const pendingWithdrawal = useMemo(() => {
+    const tx = (db.transactions || []).find(
+      (t) =>
+        (t.type === 'withdrawal' || (t.title || '').toLowerCase().includes('withdraw')) &&
+        (t.status === 'pending' || t.status === 'requested' || t.status === 'pending_payout')
     );
+    if (tx) {
+      const rawId = tx.reference_id || tx.transaction_id || tx.id || '';
+      const cleanId = rawId.replace(/^LDG-/, '');
+      return {
+        id: cleanId,
+        amount: Math.abs(Number(tx.net_cashback ?? tx.amount_cashback ?? tx.cashback_amount ?? tx.amount ?? 0)),
+      };
+    }
+    const h = (db.history || []).find(
+      (item) => item.type === 'withdrawal' && (item.status === 'pending' || item.status === 'pending_payout')
+    );
+    if (h) {
+      const rawId = (h as any).reference_id || (h as any).transaction_id || h.id || '';
+      const cleanId = rawId.replace(/^LDG-/, '');
+      return {
+        id: cleanId,
+        amount: Math.abs(Number(h.amount || 0)),
+      };
+    }
+    return null;
   }, [db.transactions, db.history]);
+
+  const hasPendingWithdrawal = Boolean(pendingWithdrawal);
 
   const requireRules = db.settings.require_points_for_withdrawal !== false;
   const minPts = Number(db.settings.min_points_to_unlock_withdrawal ?? 100);
@@ -959,7 +1030,12 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     isEditingRef.current = false;
     hasLoadedUserRef.current = null;
     const storedPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
-    const fullPhone = storedPhone ? (storedPhone.startsWith('65') ? storedPhone : `65${storedPhone}`) : '';
+    const cleanAuthPhone = storedPhone.replace(/\D/g, '');
+    const existingPrivacyPhone = String(db.user?.privacy?.phone || '');
+    const unmaskedFromDb = existingPrivacyPhone && !existingPrivacyPhone.includes('*') ? existingPrivacyPhone : '';
+    const resolvedFullPhone = cleanAuthPhone
+      ? (cleanAuthPhone.startsWith('65') ? cleanAuthPhone : `65${cleanAuthPhone}`)
+      : unmaskedFromDb;
 
     updateAccountProfile({
       nickname,
@@ -969,7 +1045,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       privacy_mode: privacyMode,
       privacy: {
         mode: privacyMode,
-        phone: privacyMode ? `*******${resolvedPhoneLast4}` : (fullPhone || `*******${resolvedPhoneLast4}`),
+        phone: privacyMode
+          ? `*******${resolvedPhoneLast4}`
+          : (resolvedFullPhone ? (resolvedFullPhone.startsWith('+') ? resolvedFullPhone : `+${resolvedFullPhone}`) : `...${resolvedPhoneLast4}`),
         paynow_last4: paynow.trim() ? paynow.trim().replace(/\D/g, '').slice(-4) : '',
       },
     });
@@ -1316,7 +1394,14 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           {hasPendingWithdrawal ? (
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/80 text-center space-y-1">
               <div className="text-xs font-bold text-amber-900">Withdrawal Request in Progress</div>
-              <div className="text-[11px] text-amber-700">Your pending payout is being processed by Admin within {db.settings.withdrawal_sla_text}.</div>
+              <div className="text-[11px] text-amber-700">
+                Your pending payout is being processed by Admin within {db.settings.withdrawal_sla_text}.
+              </div>
+              {pendingWithdrawal?.id && (
+                <div className="text-[10px] font-semibold text-amber-800/80 tracking-wide pt-0.5">
+                  Withdrawal ID: #{pendingWithdrawal.id.replace(/^#/, '')}
+                </div>
+              )}
             </div>
           ) : isWithdrawalUnlocked ? (
             <div className="space-y-1.5 pt-1">

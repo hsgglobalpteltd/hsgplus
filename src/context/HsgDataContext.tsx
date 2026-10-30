@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { preloadImage, preloadImages } from '../lib/imagePreloader';
 import {
   HsgDatabaseSchema,
   UserAccount,
@@ -252,12 +253,15 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const syncLiveCashback = async () => {
     try {
       const fetchOpts: RequestInit = { cache: 'no-store' };
+      const preloadedUrls: string[] = [];
+      const authUserId = (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '';
+      const claimsUrl = authUserId
+        ? `${LIVE_WORKER_URL}/api/hsg-app/cashback/claims?time_filter=all&user_id=${encodeURIComponent(authUserId)}`
+        : `${LIVE_WORKER_URL}/api/hsg-app/cashback/claims?time_filter=all`;
+
       const [res, clRes, ctRes, nwRes, evRes, stRes] = await Promise.all([
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/cashback/campaigns`, fetchOpts),
-        fetch(
-          `${LIVE_WORKER_URL}/api/hsg-app/cashback/claims?time_filter=all`,
-          fetchOpts
-        ),
+        fetch(claimsUrl, fetchOpts),
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/contests`, fetchOpts),
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/news`, fetchOpts),
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/events`, fetchOpts),
@@ -268,6 +272,12 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         const data = await res.json();
         if (Array.isArray(data.campaigns)) {
           const liveCamps = data.campaigns;
+          liveCamps.forEach((c: any) => {
+            if (c.poster_url) preloadedUrls.push(c.poster_url);
+            if (c.promo_card_url) preloadedUrls.push(c.promo_card_url);
+            if (c.banner_image_url) preloadedUrls.push(c.banner_image_url);
+            if (c.image_url) preloadedUrls.push(c.image_url);
+          });
           const liveActiveList = liveCamps
             .filter((c: any) => c.is_active && !c.is_archived)
             .sort((a: any, b: any) => (Number(a.display_order) || 1) - (Number(b.display_order) || 1));
@@ -300,6 +310,18 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                 prize_tiers: Array.isArray(c.prize_tiers) ? c.prize_tiers : [],
               }))
           : [];
+        publishedContests.forEach((c: any) => {
+          if (c.frontpage_poster_url) preloadedUrls.push(c.frontpage_poster_url);
+          if (c.frontpage_config?.cover_photo_url) preloadedUrls.push(c.frontpage_config.cover_photo_url);
+          if (Array.isArray(c.inside_posters)) preloadedUrls.push(...c.inside_posters);
+          if (Array.isArray(c.poster_images)) preloadedUrls.push(...c.poster_images);
+          if (Array.isArray(c.prizes)) {
+            c.prizes.forEach((p: any) => {
+              if (p.photo_url) preloadedUrls.push(p.photo_url);
+              if (p.product_image) preloadedUrls.push(p.product_image);
+            });
+          }
+        });
         const allSubs = Array.isArray(ctData.submissions)
           ? ctData.submissions.map((s: any) => ({
               ...s,
@@ -342,6 +364,17 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       if (evRes.ok) {
         const evData = await evRes.json();
         if (Array.isArray(evData.events)) {
+          // Eagerly preload first 4 event card images immediately
+          evData.events.slice(0, 4).forEach((ev: any) => {
+            const img = ev.banner_url || ev.image_url;
+            if (img) preloadImage(img);
+          });
+
+          evData.events.forEach((ev: any) => {
+            const img = ev.banner_url || ev.image_url;
+            if (img) preloadedUrls.push(img);
+            if (ev.outcome_url) preloadedUrls.push(ev.outcome_url);
+          });
           const rsvps = Array.isArray(evData.rsvps) ? evData.rsvps : [];
           const authPhone = (localStorage.getItem('hsg_auth_phone')) || '';
           const authUserId = (localStorage.getItem('hsg_auth_user_id')) || '';
@@ -354,8 +387,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                 .map((ev: any) => {
                   const evRsvps = rsvps.filter((r: any) => r.event_id === ev.id);
                   const myRsvp = evRsvps.find((r: any) => 
-                    (currentUserId && r.user_id === currentUserId) ||
-                    (authPhone && r.user_phone === authPhone)
+                    Boolean(currentUserId && r.user_id && r.user_id === currentUserId)
                   );
                   return {
                     id: ev.id,
@@ -485,6 +517,10 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           }));
         }
       }
+
+      if (preloadedUrls.length > 0) {
+        preloadImages(preloadedUrls);
+      }
     } catch (e) {
       console.warn('[LiveCashback] Sync error:', e);
     }
@@ -580,9 +616,12 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/transactions${queryParam}`, {
           cache: 'no-store',
         }),
-        fetch(`${LIVE_WORKER_URL}/api/hsg-app/merch-orders`, {
-          cache: 'no-store',
-        }).catch(() => null),
+        fetch(
+          authUserId
+            ? `${LIVE_WORKER_URL}/api/hsg-app/merch-orders?user_id=${encodeURIComponent(authUserId)}`
+            : `${LIVE_WORKER_URL}/api/hsg-app/merch-orders`,
+          { cache: 'no-store' }
+        ).catch(() => null),
       ]);
       if (res.ok) {
         const data = await res.json();
@@ -834,9 +873,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     setDb((prev) => ({
       ...prev,
       user: userRecord,
-      users_list: prev.users_list.some((u) => u.phone_number === cleanPhone)
+      users_list: prev.users_list.some((u) => (userRecord.id && (u.id === userRecord.id || u.user_id === userRecord.id)))
         ? prev.users_list.map((u) =>
-            u.phone_number === cleanPhone ? userRecord : u
+            (userRecord.id && (u.id === userRecord.id || u.user_id === userRecord.id)) ? userRecord : u
           )
         : [userRecord, ...prev.users_list],
     }));
@@ -1037,6 +1076,12 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       : payload.raw_address;
 
     const isPointsCampaign = activeCampaign?.purchase_reward_mode === 'points';
+    const rewardCash = activeCampaign
+      ? Number(activeCampaign.reward?.cash ?? activeCampaign.reward_cash ?? (isPointsCampaign ? 0 : payload.cashback_earned))
+      : (isPointsCampaign ? 0 : payload.cashback_earned);
+    const rewardPoints = activeCampaign
+      ? Number(activeCampaign.reward?.points ?? activeCampaign.reward_points ?? (isPointsCampaign ? payload.cashback_earned : 0))
+      : (isPointsCampaign ? payload.cashback_earned : 0);
 
     const newHistoryItem: CashbackHistoryItem = {
       id: 'HIST-' + Math.floor(10000 + Math.random() * 90000),
@@ -1044,7 +1089,8 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       title: isPointsCampaign
         ? `Points Claim (Pending Verify): ${payload.items}`
         : `Cashback Claim (Pending Verify): ${payload.items}`,
-      amount: isPointsCampaign ? 0 : payload.cashback_earned,
+      amount: rewardCash,
+      points: rewardPoints,
       status: 'pending',
       outlet_id: matchedOutletId || 'UNMAPPED-ADDR',
       outlet_name: matchedOutlet ? matchedOutlet.outlet_name : payload.raw_address,
@@ -1068,10 +1114,17 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         : payload.raw_address,
       qty: payload.qty,
       receipt_amount: payload.amount,
-        total_purchase: payload.amount,
-        total_qty: payload.qty,
-        answers: payload.survey_answers,
-      cashback_amount: payload.cashback_earned,
+      total_purchase: payload.amount,
+      total_qty: payload.qty,
+      answers: payload.survey_answers,
+      cashback_amount: rewardCash,
+      points: rewardPoints,
+      reward: {
+        cash: rewardCash,
+        cashback: rewardCash,
+        points: rewardPoints,
+        type: activeCampaign?.reward?.type || (rewardCash > 0 && rewardPoints > 0 ? 'both' : isPointsCampaign ? 'points' : 'cashback'),
+      },
       cashier_task_qty: Number(payload.survey_answers.task_cashier_moving_qty || payload.survey_answers.task_1 || 10),
       task_answers: payload.survey_answers,
       receipt_photo_url: payload.receipt_photo_url || activeCampaign?.product_image_url || '/hsg-bottle.png',
@@ -1141,11 +1194,11 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       cashback_claims: [newClaimRecord, ...prev.cashback_claims],
     }));
 
-    showToast(
-      isPointsCampaign
-        ? `Receipt uploaded! +${payload.cashback_earned} pts pending verification.`
-        : `Receipt uploaded! +$${payload.cashback_earned.toFixed(2)} cashback pending verification.`
-    );
+    const toastParts: string[] = [];
+    if (rewardCash > 0) toastParts.push(`+$${rewardCash.toFixed(2)} cashback`);
+    if (rewardPoints > 0) toastParts.push(`+${rewardPoints.toLocaleString()} pts`);
+    const toastMsg = toastParts.join(' & ') || `+$${payload.cashback_earned.toFixed(2)} cashback`;
+    showToast(`Receipt uploaded! ${toastMsg} pending verification.`);
 
     return { matchedOutletId, matchedOutletName };
   };
@@ -1172,7 +1225,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     setDb((prev) => ({
       ...prev,
       user:
-        prev.user && prev.user.phone_number === target.user_phone
+        prev.user && target.user_id && (prev.user.id === target.user_id || prev.user.user_id === target.user_id)
           ? {
               ...prev.user,
               wallet_balance: Math.max(
@@ -1791,7 +1844,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         ...prev,
         user: updatedUser,
         users_list: prev.users_list.map((u) =>
-          u.phone_number === updatedUser.phone_number ? updatedUser : u
+          (updatedUser.id && (u.id === updatedUser.id || u.user_id === updatedUser.id)) ? updatedUser : u
         ),
         history: [orderRecord, ...prev.history],
         merch_orders: [newLiveOrder, ...(prev.merch_orders || [])],

@@ -77,7 +77,16 @@ const HsgMobileShell: React.FC = () => {
     return 'home';
   });
 
+  const homeScrollPosRef = useRef<number>(0);
+  const eventsScrollPosRef = useRef<number>(0);
+
   const navigateTo = (newRoute: ActiveRoute) => {
+    if (route === 'home' && newRoute !== 'home' && mainScrollRef.current) {
+      homeScrollPosRef.current = mainScrollRef.current.scrollTop;
+    }
+    if (route === 'events' && newRoute !== 'events' && mainScrollRef.current) {
+      eventsScrollPosRef.current = mainScrollRef.current.scrollTop;
+    }
     setRoute(newRoute);
     try {
       sessionStorage.setItem('hsg_active_route', newRoute);
@@ -120,6 +129,12 @@ const HsgMobileShell: React.FC = () => {
         hash === 'transactions' ||
         hash === 'snap'
       ) {
+        if (route === 'home' && mainScrollRef.current) {
+          homeScrollPosRef.current = mainScrollRef.current.scrollTop;
+        }
+        if (route === 'events' && mainScrollRef.current) {
+          eventsScrollPosRef.current = mainScrollRef.current.scrollTop;
+        }
         setRoute(hash as ActiveRoute);
       } else if (!hash) {
         setRoute('home');
@@ -127,7 +142,7 @@ const HsgMobileShell: React.FC = () => {
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, route]);
 
   // Strict route guard: Transaction History cannot be accessed without login
   useEffect(() => {
@@ -303,7 +318,21 @@ const HsgMobileShell: React.FC = () => {
     if (scrollTimeoutRef.current) {
       window.clearTimeout(scrollTimeoutRef.current);
     }
-    if (route !== 'events' && mainScrollRef.current) {
+    if (route === 'home') {
+      if (mainScrollRef.current) {
+        mainScrollRef.current.scrollTo({
+          top: homeScrollPosRef.current,
+          behavior: 'instant' as ScrollBehavior,
+        });
+      }
+    } else if (route === 'events') {
+      if (mainScrollRef.current) {
+        mainScrollRef.current.scrollTo({
+          top: eventsScrollPosRef.current,
+          behavior: 'instant' as ScrollBehavior,
+        });
+      }
+    } else if (mainScrollRef.current) {
       mainScrollRef.current.scrollTo({
         top: 0,
         behavior: 'instant' as ScrollBehavior,
@@ -488,7 +517,8 @@ const HsgMobileShell: React.FC = () => {
           onScroll={handleMainScroll}
           className="w-full flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar pb-4 scroll-smooth"
         >
-          {route === 'home' ? (
+          {/* KEEP-ALIVE HOMEPAGE (Preserves loaded photos, state, and scroll position) */}
+          <div className={route === 'home' ? 'contents' : 'hidden'}>
             <HomePage
               onOpenAccount={() => navigateTo('account')}
               onOpenEvents={(eventId) => {
@@ -505,9 +535,13 @@ const HsgMobileShell: React.FC = () => {
                 navigateTo('redeem');
               }}
             />
-          ) : route === 'snap' ? (
+          </div>
+
+          {route === 'snap' && (
             <SnapCashbackPage onSuccessDone={() => navigateTo('account')} />
-          ) : route === 'events' ? (
+          )}
+          {/* KEEP-ALIVE EVENTS PAGE (Preserves first 4 images loaded, event card state, and instant tab switch) */}
+          <div className={route === 'events' ? 'contents' : 'hidden'}>
             <EventsPage
               selectedEventId={selectedEventId}
               onSelectEvent={(id) => {
@@ -535,7 +569,8 @@ const HsgMobileShell: React.FC = () => {
               onClearVenueScan={() => setIsVenueScan(false)}
               scrollContainerRef={mainScrollRef}
             />
-          ) : route === 'contest' ? (
+          </div>
+          {route === 'contest' && (
             <ContestPage
               initialContestId={selectedContestId}
               onBack={() => navigateTo('home')}
@@ -545,18 +580,20 @@ const HsgMobileShell: React.FC = () => {
                 navigateTo('events');
               }}
             />
-          ) : route === 'redeem' ? (
+          )}
+          {route === 'redeem' && (
             <RedeemShopPage onBack={() => navigateTo(redeemBackRoute)} />
-          ) : route === 'invite' ? (
+          )}
+          {route === 'invite' && (
             <InviteFriendsPage onBack={() => navigateTo('account')} />
-          ) : route === 'transactions' ? (
-            isAuthenticated ? (
-              <TransactionHistoryPage
-                initialTab={txHistoryTab}
-                onBack={() => navigateTo('account')}
-              />
-            ) : null
-          ) : (
+          )}
+          {route === 'transactions' && isAuthenticated && (
+            <TransactionHistoryPage
+              initialTab={txHistoryTab}
+              onBack={() => navigateTo('account')}
+            />
+          )}
+          {route === 'account' && (
             <AccountPage
               onBack={() => navigateTo('home')}
               onOpenRedeemShop={() => {
@@ -694,14 +731,14 @@ const HsgMobileShell: React.FC = () => {
 
         {/* GLOBAL CUSTOM TOAST — ALWAYS IN FRONT OF ALL MODALS, POPUPS & BACKDROPS */}
         {toastMessage && (
-          <div className="fixed top-5 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[398px] z-[999999] pointer-events-auto transition-all">
+          <div className="fixed top-[72px] left-1/2 -translate-x-1/2 w-[calc(100%-2.5rem)] max-w-[398px] z-[999999] pointer-events-none flex justify-center">
             <div
               role="status"
               aria-live="polite"
-              className="w-full bg-[#141416]/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl border border-white/20 font-semibold text-xs flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-3 duration-200"
+              className="w-full bg-white/95 backdrop-blur-md text-zinc-900 px-4 py-3 rounded-2xl shadow-xl shadow-slate-900/10 border border-slate-200/90 font-semibold text-xs flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-3 duration-300 pointer-events-auto"
             >
               <span className="flex-1 leading-snug">{toastMessage}</span>
-              <span className="w-2 h-2 rounded-full bg-[#FFEA00] shrink-0 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
             </div>
           </div>
         )}

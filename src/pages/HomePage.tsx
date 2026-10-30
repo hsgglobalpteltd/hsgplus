@@ -1,6 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowRight, Calendar, ChevronRight, Clock, Megaphone, Plus, Wallet } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowRight,
+  Calendar,
+  ChevronRight,
+  Clock,
+  Megaphone,
+  Plus,
+  Trophy,
+  Wallet,
+} from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
+import { isImageLoaded, markImageLoaded } from '../lib/imagePreloader';
 
 interface HomePageProps {
   onOpenAccount: () => void;
@@ -34,33 +44,51 @@ function ContestThumbnail({
   src,
   alt,
   countdownText,
+  isWinnersAnnounced = false,
 }: {
   src: string;
   alt: string;
   countdownText: string;
+  isWinnersAnnounced?: boolean;
 }) {
-  const [loaded, setLoaded] = useState(false);
+  const alreadyCached = isImageLoaded(src);
+  const [loaded, setLoaded] = useState<boolean>(() => alreadyCached);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+      markImageLoaded(src);
+      setLoaded(true);
+    }
+  }, [src]);
 
   return (
     <div className="w-full relative bg-zinc-100 overflow-hidden min-h-[220px]">
-      {!loaded && (
+      {!loaded && !alreadyCached && (
         <div className="absolute inset-0 bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-100 animate-pulse flex items-center justify-center min-h-[220px]">
           <div className="w-7 h-7 rounded-full border-2 border-zinc-300 border-t-zinc-500 animate-spin opacity-40" />
         </div>
       )}
       <img
+        ref={imgRef}
         src={src}
         alt={alt}
-        loading="lazy"
-        onLoad={() => setLoaded(true)}
-        className={`w-full h-auto max-h-[560px] object-cover block transition-opacity duration-300 ${
-          loaded ? 'opacity-100' : 'opacity-0'
+        loading="eager"
+        decoding="async"
+        onLoad={() => {
+          markImageLoaded(src);
+          setLoaded(true);
+        }}
+        className={`w-full h-auto max-h-[560px] object-cover block transition-opacity duration-150 ${
+          loaded || alreadyCached ? 'opacity-100' : 'opacity-0'
         }`}
       />
-      <div className="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-[#141416]/90 backdrop-blur-xs text-[#FFEA00] text-[11px] font-extrabold flex items-center gap-1.5 shadow-md z-10">
-        <Clock className="w-3.5 h-3.5 text-[#EC008C]" />
-        <span>{countdownText}</span>
-      </div>
+      {!isWinnersAnnounced && (
+        <div className="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-[#141416]/90 backdrop-blur-xs text-[#FFEA00] text-[11px] font-extrabold flex items-center gap-1.5 shadow-md z-10">
+          <Clock className="w-3.5 h-3.5 text-[#EC008C]" />
+          <span>{countdownText}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -249,6 +277,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 (Array.isArray(contest.inside_posters) && contest.inside_posters[0]) ||
                 (Array.isArray(contest.poster_images) && contest.poster_images[0]) ||
                 '';
+              const isWinnersAnnounced = Boolean(contest.winners_announced);
               const countdownText = formatCountdown(
                 contest.start_timestamp,
                 contest.end_timestamp,
@@ -266,12 +295,13 @@ export const HomePage: React.FC<HomePageProps> = ({
                       src={fpPhoto}
                       alt={fpTitle}
                       countdownText={countdownText}
+                      isWinnersAnnounced={isWinnersAnnounced}
                     />
                   )}
 
                   <div className="p-4 space-y-3">
                     <div>
-                      {!fpPhoto && (
+                      {!fpPhoto && !isWinnersAnnounced && (
                         <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#141416] text-[#FFEA00] text-[10px] font-extrabold mb-2">
                           <Clock className="w-3 h-3 text-[#EC008C]" />
                           <span>{countdownText}</span>
@@ -289,19 +319,34 @@ export const HomePage: React.FC<HomePageProps> = ({
 
                     <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-zinc-500">
-                        Tap for details & rules
+                        {isWinnersAnnounced ? 'Tap to view' : 'Tap for details & rules'}
                       </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenContest(contest.id);
-                        }}
-                        className="h-9 px-4 rounded-full bg-[#EC008C] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm hover:bg-[#d6007e] transition"
-                      >
-                        <span>Submit Entry</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                      {isWinnersAnnounced ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenContest(contest.id);
+                          }}
+                          className="h-9 px-4 rounded-full bg-[#141416] text-[#FFEA00] text-xs font-bold inline-flex items-center gap-1.5 shadow-sm hover:bg-black transition active:scale-95 cursor-pointer"
+                        >
+                          <Trophy className="w-3.5 h-3.5 text-[#FFEA00]" />
+                          <span>View Winners</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenContest(contest.id);
+                          }}
+                          className="h-9 px-4 rounded-full bg-[#EC008C] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm hover:bg-[#d6007e] transition active:scale-95 cursor-pointer"
+                        >
+                          <span>Submit Entry</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

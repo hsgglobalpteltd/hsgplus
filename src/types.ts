@@ -76,6 +76,14 @@ export interface CashbackCampaign {
   // Cash-In #1: Each Purchase (Flat Rate OR Percentage of Purchase)
   purchase_reward_mode: CashbackPurchaseMode;
   cashback_amount: number; // if flat: $1.00; if percentage: e.g. 10 (%)
+  reward?: {
+    cash?: number;
+    cashback?: number;
+    points?: number;
+    type?: string;
+  };
+  reward_cash?: number;
+  reward_points?: number;
   min_qty: number;
   where_to_buy: string;
   start_timestamp: number;
@@ -172,6 +180,15 @@ export interface CashbackClaimRecord {
   receipt_amount: number;
   total_purchase?: number;
   cashback_amount: number;
+  points?: number;
+  points_amount?: number;
+  reward_points?: number;
+  reward?: {
+    cash?: number;
+    cashback?: number;
+    points?: number;
+    type?: string;
+  };
   cashier_task_qty: number;
   task_answers?: Record<string, string | number | string[]>;
   answers?: Record<string, any>;
@@ -218,6 +235,7 @@ export interface HsgTransaction {
   description?: string;
   reference_id?: string;
   reference_type?: string;
+  transaction_id?: string;
   outlet_id?: string;
   outlet_name?: string;
   metadata?: Record<string, any>;

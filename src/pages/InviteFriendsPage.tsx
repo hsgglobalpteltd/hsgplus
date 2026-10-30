@@ -22,6 +22,7 @@ interface InviteFriendsPageProps {
 interface ReferredFriend {
   id: string;
   name: string;
+  nickname?: string;
   cashback: number;
   points: number;
   joined_at: number;
@@ -166,7 +167,7 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
     return () => {
       isMounted = false;
     };
-  }, [cleanPhone, db.transactions]);
+  }, [userId, cleanPhone, db.transactions]);
 
   useEffect(() => {
     if (showClaimModal) {
@@ -238,22 +239,23 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
         ? window.location.origin
         : 'https://community.hsgglobal.sg';
     const link = `${origin}?ref=${encodeURIComponent(userCode)}`;
-    const text = `Hey! Join me on HSG+ and get $${refereeCashback.toFixed(
+    const inviteMsg = `Hey! Join me on HSG+ and get $${refereeCashback.toFixed(
       2
-    )} free cashback + ${refereePoints} reward points! 🎁 Use my referral code: ${userCode}\n${link}`;
+    )} free cashback + ${refereePoints} reward points! 🎁 Use my referral code: ${userCode}`;
 
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({
           title: 'Join HSG+ and Earn Cashback',
-          text,
+          text: inviteMsg,
           url: link,
         });
         return;
       } catch {}
     }
 
-    const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const waText = `${inviteMsg}\n${link}`;
+    const wa = `https://wa.me/?text=${encodeURIComponent(waText)}`;
     window.open(wa, '_blank');
   };
 
@@ -505,7 +507,7 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-[#141416] truncate">
-                      {(friend.name && !/^HSG Member/i.test(friend.name) && !/^\d+$/.test(friend.name)) ? friend.name : 'Community Friend'}
+                      {friend.name || friend.nickname || 'Community Friend'}
                     </div>
                     <div className="text-[10px] text-zinc-400 flex items-center gap-1 mt-0.5">
                       <Clock className="w-3 h-3 text-zinc-400" />

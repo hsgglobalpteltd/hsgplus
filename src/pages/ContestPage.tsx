@@ -174,18 +174,21 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     return (db.contest_submissions || []).filter((s) => s.contest_id === contest.id).length;
   }, [contest, db.contest_submissions]);
 
-  const userSubmissionsCount = React.useMemo(() => {
-    if (!contest) return 0;
+  const userSubmissions = React.useMemo(() => {
+    if (!contest) return [];
     const uid =
       db.user?.id ||
       (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') ||
       '';
-    if (!uid) return 0;
+    if (!uid) return [];
 
     return (db.contest_submissions || []).filter(
       (s) => s.contest_id === contest.id && s.user_id === uid
-    ).length;
+    );
   }, [contest, db.contest_submissions, db.user?.id]);
+
+  const userSubmissionsCount = userSubmissions.length;
+  const hasApprovedEntry = userSubmissions.some((s) => s.status === 'approved');
 
   const maxPerUser = Number(contest?.max_per_user ?? contest?.submission_limits?.max_per_user ?? 0);
   const isQuotaReached = maxPerUser > 0 && userSubmissionsCount >= maxPerUser;
@@ -223,39 +226,27 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     return contest.prizes.slice(0, 10);
   }, [contest]);
 
-  // Winners for this contest
-  const contestWinners = React.useMemo(() => {
-    if (!contest) return [];
-    return (db.contest_winners || []).filter((w) => w.contest_id === contest.id);
-  }, [contest, db.contest_winners]);
+  // Winners announcement state strictly based on contest.winners_announced
+  const isWinnersAnnounced = Boolean(contest?.winners_announced);
 
-  // Current user's winning prizes for this contest
+  // Winners for this contest (only visible once announced)
+  const contestWinners = React.useMemo(() => {
+    if (!contest || !isWinnersAnnounced) return [];
+    return (db.contest_winners || []).filter((w) => w.contest_id === contest.id);
+  }, [contest, db.contest_winners, isWinnersAnnounced]);
+
+  // Current user's winning prizes for this contest (only visible once announced)
   const myWinningPrizes = React.useMemo(() => {
-    if (!contest) return [];
+    if (!contest || !isWinnersAnnounced) return [];
     const uid =
       db.user?.id ||
       (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') ||
       '';
-    const uPhone = String(
-      db.user?.phone_number ||
-      (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_phone') : '') ||
-      ''
-    ).replace(/\D/g, '');
+    if (!uid) return [];
     return (db.contest_winners || []).filter((w) => {
-      if (w.contest_id !== contest.id) return false;
-      if (uid && w.user_id && w.user_id === uid) return true;
-      if (
-        uPhone &&
-        w.user_phone &&
-        String(w.user_phone).replace(/\D/g, '').slice(-8) === uPhone.slice(-8)
-      ) {
-        return true;
-      }
-      return false;
+      return w.contest_id === contest.id && w.user_id === uid;
     });
-  }, [contest, db.contest_winners, db.user?.id, db.user?.phone_number]);
-
-  const isWinnersAnnounced = Boolean(contest?.winners_announced) || contestWinners.length > 0;
+  }, [contest, db.contest_winners, db.user?.id, isWinnersAnnounced]);
 
   // Countdown timer calculations
   const getCountdownParts = () => {
@@ -338,9 +329,10 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   // Mask Phone helper
   const maskPhone = (phone?: string) => {
     if (!phone) return '-';
+    if (phone.includes('*')) return phone;
     const clean = phone.replace(/\D/g, '');
-    if (clean.length <= 4) return clean;
-    return `...${clean.slice(-4)}`;
+    if (!clean) return phone;
+    return `*******${clean.slice(-4)}`;
   };
 
   return (
@@ -812,9 +804,24 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                 <h3 className="text-base font-extrabold text-[#141416]">
                   You're in the Draw! 🎉
                 </h3>
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80 text-[11px] font-bold">
-                  <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Entry is pending review</span>
+                <div
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold ${
+                    hasApprovedEntry
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-amber-50 text-amber-800 border-amber-200/80'
+                  }`}
+                >
+                  {hasApprovedEntry ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Entry Approved • Waiting for Announcement ⏳</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Entry is pending review</span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="space-y-1">

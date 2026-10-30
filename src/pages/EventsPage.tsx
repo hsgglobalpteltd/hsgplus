@@ -22,6 +22,45 @@ import {
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { HsgEvent, EventCategory } from '../types';
+import { isImageLoaded, markImageLoaded } from '../lib/imagePreloader';
+
+function EventCardThumbnail({
+  src,
+  alt,
+  priority = false,
+}: {
+  src: string;
+  alt: string;
+  priority?: boolean;
+}) {
+  const alreadyCached = isImageLoaded(src);
+  const [loaded, setLoaded] = useState<boolean>(() => alreadyCached);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+      markImageLoaded(src);
+      setLoaded(true);
+    }
+  }, [src]);
+
+  return (
+    <img
+      ref={imgRef}
+      src={src}
+      alt={alt}
+      loading={priority ? 'eager' : 'lazy'}
+      decoding={priority ? 'sync' : 'async'}
+      onLoad={() => {
+        markImageLoaded(src);
+        setLoaded(true);
+      }}
+      className={`w-full h-full object-cover transition-all duration-200 group-hover:scale-105 ${
+        loaded || alreadyCached ? 'opacity-100' : 'opacity-0'
+      }`}
+    />
+  );
+}
 
 interface EventsPageProps {
   selectedEventId: string | null;
@@ -473,11 +512,13 @@ export const EventsPage: React.FC<EventsPageProps> = ({
 
         {/* MAIN EVENT DETAIL CARD */}
         <div className="w-full rounded-3xl bg-white overflow-hidden shadow-xs">
-          <img
-            src={activeEvent.image_url}
-            alt={activeEvent.title}
-            className="w-full h-48 object-cover bg-zinc-100"
-          />
+          <div className="w-full h-48 bg-zinc-100 overflow-hidden">
+            <EventCardThumbnail
+              src={activeEvent.image_url}
+              alt={activeEvent.title}
+              priority={true}
+            />
+          </div>
           <div className="p-5">
             <div className="text-xs font-semibold text-[#EC008C]">
               {formatDate(activeEvent.date_timestamp)} • {activeEvent.time_label}
@@ -1219,7 +1260,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
         {todayEvents.length > 0 && (
           <div className="w-full space-y-2.5">
             <h2 className="text-base font-bold text-[#141416]">Today Event</h2>
-            {todayEvents.map((ev) => (
+            {todayEvents.map((ev, idx) => (
               <div
                 key={ev.id}
                 onClick={() => onSelectEvent(ev.id)}
@@ -1227,10 +1268,10 @@ export const EventsPage: React.FC<EventsPageProps> = ({
               >
                 {/* Full-width Image Thumbnail */}
                 <div className="relative w-full h-44 bg-black/10 overflow-hidden">
-                  <img
+                  <EventCardThumbnail
                     src={ev.image_url}
                     alt={ev.title}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    priority={idx < 4}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
 
@@ -1334,7 +1375,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
 
           {upcomingEvents.length > 0 ? (
             <div className="w-full space-y-3">
-              {upcomingEvents.map((ev) => (
+              {upcomingEvents.map((ev, idx) => (
                 <div
                   key={ev.id}
                   onClick={() => onSelectEvent(ev.id)}
@@ -1342,10 +1383,10 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                 >
                   {/* Full-width Image Thumbnail */}
                   <div className="relative w-full h-44 bg-zinc-900 overflow-hidden">
-                    <img
+                    <EventCardThumbnail
                       src={ev.image_url}
                       alt={ev.title}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      priority={idx < 4}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
 
