@@ -985,7 +985,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      className="w-full px-5 pt-2 pb-6 space-y-4"
+      className="w-full min-h-full flex flex-col px-5 pt-2 pb-6 space-y-4"
     >
       {/* Fee Payment Selection Modal */}
       {pendingPaymentEvent && (
@@ -1444,7 +1444,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
         )}
 
         {/* UPCOMING EVENTS SECTION (Sorted Nearest Date to Top) */}
-        <div className="w-full space-y-3">
+        <div className="w-full flex-1 flex flex-col space-y-3">
           <div>
             <h1 className="text-base font-bold text-[#141416]">
               Upcoming Events ({upcomingEvents.length})
@@ -1547,8 +1547,8 @@ export const EventsPage: React.FC<EventsPageProps> = ({
               ))}
             </div>
           ) : (
-            <div className="w-full p-6 rounded-3xl bg-white text-center text-xs text-zinc-400">
-              No events match the selected filter.
+            <div className="w-full flex-1 min-h-[300px] p-6 rounded-3xl bg-white text-center text-xs font-medium text-zinc-400 flex items-center justify-center">
+              No events
             </div>
           )}
         </div>

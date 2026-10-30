@@ -180,7 +180,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
               window.clearInterval(pollTimerRef.current);
             }
             setIsVerified(true);
-            const verifiedPhone = data.customer_phone || fullPhone;
+            const rawCand = (data.customer_phone || fullPhone || '').replace(/\D/g, '');
+            const verifiedPhone = rawCand.length >= 8 ? rawCand : fullPhone.replace(/\D/g, '');
+            if (verifiedPhone && verifiedPhone.length >= 8) {
+              try { localStorage.setItem('hsg_auth_phone', verifiedPhone); } catch {}
+            }
             const verifiedName = data.customer_name || `HSG Member ${verifiedPhone.slice(-4)}`;
             window.setTimeout(() => {
               loginWithWhatsApp(verifiedPhone, verifiedName, data.user);
@@ -568,13 +572,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
 
       {/* TERMS OF SERVICE & PRIVACY POLICY SHEET MODAL (FOR NEW UNREGISTERED USERS) */}
       {showPolicyModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-sm rounded-3xl bg-white shadow-2xl border border-zinc-200 p-5 flex flex-col max-h-[85vh]">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md sm:max-w-lg h-[80vh] max-h-[80vh] rounded-3xl bg-white shadow-2xl border border-zinc-200 p-4 sm:p-5 flex flex-col justify-between">
             {/* Modal Header: Clean Text Only — NO Date in Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 shrink-0">
               <div className="flex items-center gap-2 text-[#141416]">
                 <FileText className="w-5 h-5 text-[#EC008C]" />
-                <h3 className="text-sm font-extrabold">Terms of Service & Privacy Policy</h3>
+                <h3 className="text-sm font-extrabold">Terms of Service &amp; Privacy Policy</h3>
               </div>
               <button
                 type="button"
@@ -588,8 +592,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
               </button>
             </div>
 
-            {/* Modal Body: Scrollable terms text container with zero mock fallbacks */}
-            <div className="flex-1 min-h-[160px] max-h-[280px] overflow-y-auto no-scrollbar my-4 p-3.5 rounded-2xl bg-zinc-50 border border-zinc-100 text-xs text-zinc-700 leading-relaxed font-sans whitespace-pre-wrap">
+            {/* Modal Body: Wider scrollable terms text container filling remaining 80vh space */}
+            <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar my-3 p-3.5 sm:p-4 rounded-2xl bg-zinc-50/80 border border-zinc-100 text-xs text-zinc-700 leading-relaxed font-sans whitespace-pre-wrap">
               {policyText.trim() ? (
                 <div>
                   {policyText}
@@ -601,49 +605,49 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
                   )}
                 </div>
               ) : (
-                /* Completely Empty Space — Zero Mock Fallback Text */
-                <div className="w-full h-full min-h-[120px] flex items-center justify-center text-zinc-300 text-xs italic">
-                  {/* Clean empty space reserved for admin uploaded .txt */}
+                <div className="w-full h-full min-h-[140px] flex items-center justify-center text-zinc-400 text-xs italic">
+                  No terms and conditions published yet.
                 </div>
               )}
             </div>
 
-            {/* Mandatory Checkbox Agreement */}
-            <label className="flex items-start gap-2.5 text-xs text-zinc-700 cursor-pointer select-none py-1">
-              <input
-                type="checkbox"
-                checked={agreedToPolicy}
-                onChange={(e) => setAgreedToPolicy(e.target.checked)}
-                className="w-4 h-4 mt-0.5 rounded-md accent-[#25D366] cursor-pointer shrink-0"
-              />
-              <span className="leading-snug">
-                I have read and agree to the <b>Terms of Service &amp; Privacy Policy</b>.
-              </span>
-            </label>
+            {/* Footer: Mandatory Checkbox Agreement & Action Button */}
+            <div className="shrink-0 pt-2 border-t border-zinc-100">
+              <label className="flex items-start gap-2.5 text-xs text-zinc-700 cursor-pointer select-none py-1">
+                <input
+                  type="checkbox"
+                  checked={agreedToPolicy}
+                  onChange={(e) => setAgreedToPolicy(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 rounded-md accent-[#25D366] cursor-pointer shrink-0"
+                />
+                <span className="leading-snug">
+                  I have read and agree to the <b>Terms of Service &amp; Privacy Policy</b>.
+                </span>
+              </label>
 
-            {/* Action Button: Agree & Continue with WhatsApp */}
-            <button
-              type="button"
-              disabled={!agreedToPolicy || initLoading}
-              onClick={() => handleStartWhatsAppSession(true)}
-              className={`w-full h-12 mt-4 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-md ${
-                agreedToPolicy && !initLoading
-                  ? 'bg-[#25D366] hover:bg-[#20BD5A] text-white shadow-emerald-500/20 active:scale-[0.98]'
-                  : 'bg-zinc-200 text-zinc-400 cursor-not-allowed shadow-none'
-              }`}
-            >
-              {initLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Connecting...</span>
-                </>
-              ) : (
-                <>
-                  <WhatsAppIcon className="w-4.5 h-4.5 fill-current" />
-                  <span>Agree &amp; Continue with WhatsApp</span>
-                </>
-              )}
-            </button>
+              <button
+                type="button"
+                disabled={!agreedToPolicy || initLoading}
+                onClick={() => handleStartWhatsAppSession(true)}
+                className={`w-full h-11 mt-2.5 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-md ${
+                  agreedToPolicy && !initLoading
+                    ? 'bg-[#25D366] hover:bg-[#20BD5A] text-white shadow-emerald-500/20 active:scale-[0.98]'
+                    : 'bg-zinc-200 text-zinc-400 cursor-not-allowed shadow-none'
+                }`}
+              >
+                {initLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <WhatsAppIcon className="w-4.5 h-4.5 fill-current" />
+                    <span>Agree &amp; Continue with WhatsApp</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -19,24 +19,34 @@ interface HomePageProps {
   onOpenRedeemShop: () => void;
 }
 
-function formatCountdown(startTs?: number, endTs?: number, now = Date.now()): string {
+function formatCountdown(startTs?: number | string, endTs?: number | string, now = Date.now()): string {
   if (!endTs) return 'Live Now';
-  if (startTs && now < startTs) {
-    const diff = Math.max(0, startTs - now);
-    const hrs = Math.floor(diff / 3600000);
+  const startNum = startTs ? Number(startTs) : null;
+  const endNum = Number(endTs);
+  if (!endNum) return 'Live Now';
+
+  if (startNum && now < startNum) {
+    const diff = Math.max(0, startNum - now);
+    const days = Math.floor(diff / 86400000);
+    const hrs = Math.floor((diff % 86400000) / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
     const secs = Math.floor((diff % 60000) / 1000);
-    return `Starts in ${hrs}h ${mins}m ${secs}s`;
+    if (diff >= 86400000) {
+      return `Starts in ${days} ${days === 1 ? 'day' : 'days'}`;
+    }
+    return `Starts in ${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
   }
-  if (now >= endTs) {
+  if (now >= endNum) {
     return 'Contest Ended';
   }
-  const diff = Math.max(0, endTs - now);
+  const diff = Math.max(0, endNum - now);
   const days = Math.floor(diff / 86400000);
   const hrs = Math.floor((diff % 86400000) / 3600000);
   const mins = Math.floor((diff % 3600000) / 60000);
   const secs = Math.floor((diff % 60000) / 1000);
-  if (days > 0) return `${days}d ${hrs}h ${mins}m left`;
+  if (diff >= 86400000) {
+    return `${days} ${days === 1 ? 'day' : 'days'} left`;
+  }
   return `${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s left`;
 }
 

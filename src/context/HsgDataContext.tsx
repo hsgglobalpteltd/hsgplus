@@ -881,7 +881,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }));
 
     try {
-      localStorage.setItem('hsg_auth_phone', cleanPhone);
+      if (cleanPhone && cleanPhone.length >= 8) {
+        localStorage.setItem('hsg_auth_phone', cleanPhone);
+      }
       localStorage.setItem('hsg_auth_name', userRecord.nickname);
       if (userRecord.id) {
         localStorage.setItem('hsg_auth_user_id', userRecord.id);
@@ -1942,7 +1944,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast('Account profile saved');
 
     try {
-      const payload = {
+      const payload: any = {
         ...nextUser,
         paynow: resolvedPaynow,
         paynow_number: resolvedPaynow,
@@ -1950,6 +1952,13 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         user_id: nextUser.id || (localStorage.getItem('hsg_auth_user_id') ) || undefined,
         actor: 'User in HSG+ App',
       };
+      if (nextUser.privacy) {
+        payload.privacy = nextUser.privacy;
+        payload.privacy_mode = nextUser.privacy.mode;
+        if (!nextUser.privacy.mode && nextUser.privacy.phone && !nextUser.privacy.phone.includes('*')) {
+          payload.raw_phone = nextUser.privacy.phone;
+        }
+      }
       await fetch(`${LIVE_WORKER_URL}/api/hsg-app/users/upsert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

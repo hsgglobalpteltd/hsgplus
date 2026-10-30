@@ -78,6 +78,26 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
   const tabsStickyRef = useRef<HTMLDivElement | null>(null);
 
+  // Full-page Terms & Conditions sub-view
+  const [showPolicyView, setShowPolicyView] = useState<boolean>(false);
+  const [policyText, setPolicyText] = useState<string>('');
+  const [policyUpdatedAt, setPolicyUpdatedAt] = useState<number | null>(null);
+  const [loadingPolicy, setLoadingPolicy] = useState<boolean>(false);
+
+  useEffect(() => {
+    setLoadingPolicy(true);
+    fetch('https://ib-v2.hsgglobalpteltd.workers.dev/api/hsg-app/settings/policy')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setPolicyText(data.policy_text || '');
+          setPolicyUpdatedAt(data.policy_updated_at || null);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPolicy(false));
+  }, []);
+
   const handleSubTabChange = (tabId: 'activity' | 'account' | 'achievement') => {
     if (!isAuthenticated && tabId !== 'activity') {
       openLoginModal();
@@ -1032,10 +1052,21 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     const storedPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
     const cleanAuthPhone = storedPhone.replace(/\D/g, '');
     const existingPrivacyPhone = String(db.user?.privacy?.phone || '');
-    const unmaskedFromDb = existingPrivacyPhone && !existingPrivacyPhone.includes('*') ? existingPrivacyPhone : '';
-    const resolvedFullPhone = cleanAuthPhone
-      ? (cleanAuthPhone.startsWith('65') ? cleanAuthPhone : `65${cleanAuthPhone}`)
-      : unmaskedFromDb;
+    const unmaskedFromDb = existingPrivacyPhone && !existingPrivacyPhone.includes('*') && !existingPrivacyPhone.includes('.')
+      ? existingPrivacyPhone.replace(/\D/g, '')
+      : '';
+    const validDigits = cleanAuthPhone.length >= 8 ? cleanAuthPhone : (unmaskedFromDb.length >= 8 ? unmaskedFromDb : '');
+
+    // Strict validation when user unchecks privacy mode: must have verified 8+ digit phone in localStorage
+    if (!privacyMode && validDigits.length < 8) {
+      showToast('Please sign in again via WhatsApp to enable contact sharing.');
+      setPrivacyMode(true);
+      return;
+    }
+
+    const formattedFullPhone = validDigits.startsWith('65') && validDigits.length === 10
+      ? `+${validDigits}`
+      : (validDigits.length === 8 ? `+65${validDigits}` : `+${validDigits}`);
 
     updateAccountProfile({
       nickname,
@@ -1047,7 +1078,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         mode: privacyMode,
         phone: privacyMode
           ? `*******${resolvedPhoneLast4}`
-          : (resolvedFullPhone ? (resolvedFullPhone.startsWith('+') ? resolvedFullPhone : `+${resolvedFullPhone}`) : `...${resolvedPhoneLast4}`),
+          : formattedFullPhone,
         paynow_last4: paynow.trim() ? paynow.trim().replace(/\D/g, '').slice(-4) : '',
       },
     });
@@ -1182,6 +1213,58 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         return 'bg-zinc-100 text-zinc-600 border border-zinc-200';
     }
   };
+
+  if (showPolicyView) {
+    return (
+      <div className="w-full px-5 pt-2 pb-6 space-y-4 animate-in fade-in duration-200">
+        {/* Header Row */}
+        <div className="relative flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setShowPolicyView(false)}
+            title="Back to Account"
+            className="w-9 h-9 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-95 transition cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <span className="text-sm font-bold text-[#141416] pointer-events-none">
+            Terms &amp; Conditions
+          </span>
+          <div className="w-9 h-9" />
+        </div>
+
+        {/* Content Card */}
+        <div className="w-full p-5 rounded-3xl bg-white shadow-xs space-y-3">
+          <div className="flex items-center gap-2 pb-2 border-b border-zinc-100">
+            <FileText className="w-4 h-4 text-[#EC008C]" />
+            <h2 className="text-sm font-extrabold text-[#141416]">
+              Terms of Service &amp; Privacy Policy
+            </h2>
+          </div>
+
+          {loadingPolicy ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-400">
+              <Loader2 className="w-5 h-5 animate-spin text-[#0B57D0]" />
+              <span className="text-xs">Loading terms...</span>
+            </div>
+          ) : policyText.trim() ? (
+            <div className="text-xs text-zinc-700 leading-relaxed whitespace-pre-wrap font-normal">
+              {policyText}
+              {policyUpdatedAt && (
+                <div className="mt-4 pt-3 border-t border-zinc-100 text-[11px] text-zinc-400 font-medium">
+                  Last updated: {new Date(policyUpdatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-12 text-center text-xs text-zinc-400">
+              No terms and conditions published yet.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full px-5 pt-2 pb-6 space-y-5">
@@ -1597,8 +1680,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           onSubmit={handleSaveProfile}
           onFocus={handleFormFocus}
           onBlur={handleFormBlur}
-          className={`w-full p-5 rounded-3xl bg-white shadow-xs space-y-4 transition-all duration-200 min-h-[calc(100dvh-180px)] animate-in fade-in mt-2 ${
-            isInputFocused ? 'mb-80' : 'mb-36'
+          className={`w-full p-5 rounded-3xl bg-white shadow-xs space-y-4 transition-all duration-200 animate-in fade-in mt-2 ${
+            isInputFocused ? 'mb-36' : 'mb-6'
           }`}
         >
           <div>
@@ -1728,10 +1811,21 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
           <button
             type="submit"
-            className="w-full h-11 rounded-full bg-[#141416] text-[#FFEA00] font-bold text-xs shadow-xs"
+            className="w-full h-11 rounded-full bg-[#141416] text-[#FFEA00] font-bold text-xs shadow-xs active:scale-[0.99] transition cursor-pointer"
           >
             Save Profile
           </button>
+
+          {/* Clean Link Text for T&C */}
+          <div className="pt-2 text-center">
+            <button
+              type="button"
+              onClick={() => setShowPolicyView(true)}
+              className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 underline underline-offset-4 transition cursor-pointer"
+            >
+              Terms of Service &amp; Privacy Policy
+            </button>
+          </div>
         </form>
       )}
 

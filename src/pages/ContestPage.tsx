@@ -251,20 +251,19 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   // Countdown timer calculations
   const getCountdownParts = () => {
     if (!contest?.end_timestamp) return null;
-    const target =
-      contest.start_timestamp && now < contest.start_timestamp
-        ? contest.start_timestamp
-        : contest.end_timestamp;
-    const isUpcoming = Boolean(
-      contest.start_timestamp && now < contest.start_timestamp
-    );
-    const isEnded = now >= contest.end_timestamp;
+    const startNum = contest.start_timestamp ? Number(contest.start_timestamp) : null;
+    const endNum = Number(contest.end_timestamp);
+    if (!endNum) return null;
+
+    const isUpcoming = Boolean(startNum && now < startNum);
+    const isEnded = now >= endNum;
+    const target = isUpcoming ? startNum! : endNum;
     const diff = Math.max(0, target - now);
     const days = Math.floor(diff / 86400000);
     const hours = Math.floor((diff % 86400000) / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
     const secs = Math.floor((diff % 60000) / 1000);
-    return { days, hours, mins, secs, isUpcoming, isEnded };
+    return { days, hours, mins, secs, isUpcoming, isEnded, diff };
   };
 
   const cd = getCountdownParts();
@@ -398,14 +397,19 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                   </span>
                 </div>
                 {!cd.isEnded ? (
-                  <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[#FFEA00]">
-                    {cd.days > 0 && <span>{cd.days}d</span>}
-                    <span>{String(cd.hours).padStart(2, '0')}h</span>
-                    <span>{String(cd.mins).padStart(2, '0')}m</span>
-                    <span className="text-[#EC008C]">
-                      {String(cd.secs).padStart(2, '0')}s
-                    </span>
-                  </div>
+                  cd.days > 0 ? (
+                    <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[#FFEA00]">
+                      <span>{cd.days} {cd.days === 1 ? 'day' : 'days'}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[#FFEA00]">
+                      <span>{String(cd.hours).padStart(2, '0')}h</span>
+                      <span>{String(cd.mins).padStart(2, '0')}m</span>
+                      <span className="text-[#EC008C]">
+                        {String(cd.secs).padStart(2, '0')}s
+                      </span>
+                    </div>
+                  )
                 ) : (
                   <span className="text-xs font-bold text-zinc-400">
                     Submission Window Closed
