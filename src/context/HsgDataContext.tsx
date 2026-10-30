@@ -978,6 +978,26 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (token && token.trim()) {
           const cleanToken = token.trim();
+          if ((window as any).__hsg_consumed_tokens?.has(cleanToken)) {
+            return;
+          }
+          if (!(window as any).__hsg_consumed_tokens) {
+            (window as any).__hsg_consumed_tokens = new Set<string>();
+          }
+          (window as any).__hsg_consumed_tokens.add(cleanToken);
+
+          // Strip token from address bar immediately so focus/reload events never re-fetch
+          searchParams.delete('token');
+          searchParams.delete('ott');
+          hashParams.delete('token');
+          hashParams.delete('ott');
+          const cleanSearch = searchParams.toString();
+          const cleanHash = window.location.hash.split('?')[0];
+          const newUrl = `${window.location.pathname}${
+            cleanSearch ? `?${cleanSearch}` : ''
+          }${cleanHash}`;
+          window.history.replaceState({}, '', newUrl);
+
           fetch(`${LIVE_WORKER_URL}/api/hsg-app/auth/consume-magic-token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -986,8 +1006,12 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
             .then((r) => r.json())
             .then((data) => {
               if (data.success && data.user) {
+                const existingStoredPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
+                const rawUserPhone = data.user?.phone_number || '';
+                const isMaskedPhone = rawUserPhone.includes('*') || rawUserPhone.includes('.');
+                const fullPhone = data.phone || (!isMaskedPhone ? rawUserPhone : '') || existingStoredPhone;
                 loginWithWhatsApp(
-                  data.phone || data.user.phone_number,
+                  fullPhone,
                   data.user.nickname,
                   data.user
                 );
@@ -998,19 +1022,6 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
             })
             .catch((err) => {
               console.error('[MagicToken] Consume error:', err);
-            })
-            .finally(() => {
-              // Strip token from address bar cleanly
-              searchParams.delete('token');
-              searchParams.delete('ott');
-              hashParams.delete('token');
-              hashParams.delete('ott');
-              const cleanSearch = searchParams.toString();
-              const cleanHash = window.location.hash.split('?')[0];
-              const newUrl = `${window.location.pathname}${
-                cleanSearch ? `?${cleanSearch}` : ''
-              }${cleanHash}`;
-              window.history.replaceState({}, '', newUrl);
             });
           return;
         }

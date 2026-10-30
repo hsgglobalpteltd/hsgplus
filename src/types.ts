@@ -50,11 +50,16 @@ export interface CashbackTaskItem {
 }
 
 export interface StoreVisitMilestone {
-  step: number; // 1, 2, 3, 4, 5
-  target_stores: number; // e.g. 1, 2, 3, 4, 5 shops
-  reward_type: MilestoneRewardType;
+  tier?: number;
+  step?: number;
+  stores?: number;
+  target_stores?: number;
+  reward?: string;
+  reward_label?: string;
+  reward_type?: MilestoneRewardType | string;
   reward_value?: number;
-  reward_label: string; // e.g. "+$2.00 Bonus", "+1% All Week", "+$5.00 or Free Merch"
+  cash?: number;
+  points?: number;
 }
 
 export interface CashbackCampaign {
@@ -81,7 +86,9 @@ export interface CashbackCampaign {
     cashback?: number;
     points?: number;
     type?: string;
+    unlock_rewards?: any[];
   };
+  unlock_rewards?: any[];
   reward_cash?: number;
   reward_points?: number;
   min_qty: number;
@@ -90,7 +97,7 @@ export interface CashbackCampaign {
   end_timestamp: number;
   // Cash-In #2: Extra Store Visit Milestones
   enable_milestones?: boolean;
-  store_visit_milestones: StoreVisitMilestone[];
+  store_visit_milestones?: StoreVisitMilestone[];
   visited_store_ids: string[]; // unique outlets visited by user in this campaign
   tasks?: CashbackTaskItem[]; // Max 3 dynamic tasks or survey questions
   task_title: string;
@@ -127,6 +134,7 @@ export interface UserAccount {
   id?: string;
   user_id?: string;
   phone_number: string; // PK
+  phone?: string;
   nickname: string;
   paynow: string;
   paynow_number?: string;
@@ -193,6 +201,19 @@ export interface CashbackClaimRecord {
   task_answers?: Record<string, string | number | string[]>;
   answers?: Record<string, any>;
   diagnose_status?: string;
+  assign_store_id?: string;
+  outlet_id?: string;
+  ocr_data?: {
+    assign_store_id?: string;
+    store_name?: string;
+    store_address?: string;
+    [key: string]: any;
+  };
+  user_info?: {
+    phone?: string;
+    nickname?: string;
+    [key: string]: any;
+  };
   receipt_photo_url: string;
   status: 'credited' | 'rejected' | 'pending' | 'approved';
   rejection_reason?: string;
