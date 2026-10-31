@@ -46,6 +46,9 @@ const HsgMobileShell: React.FC = () => {
   const [route, setRoute] = useState<ActiveRoute>(() => {
     if (typeof window !== 'undefined') {
       const raw = window.location.hash || window.location.search;
+      if (raw.toLowerCase().includes('contest')) {
+        return 'contest';
+      }
       if (raw.includes('id=') || raw.includes('venue_scan=') || raw.toLowerCase().includes('events')) {
         return 'events';
       }
@@ -119,9 +122,18 @@ const HsgMobileShell: React.FC = () => {
       if (raw.includes('?')) {
         const queryStr = raw.split('?')[1] || '';
         const params = new URLSearchParams(queryStr);
-        const eventId = params.get('id');
-        if (eventId) setSelectedEventId(eventId);
+        const queryId = params.get('id');
+        if (hash === 'contest' || raw.toLowerCase().includes('contest')) {
+          if (queryId) setSelectedContestId(queryId);
+          setRoute('contest');
+          return;
+        }
+        if (queryId) setSelectedEventId(queryId);
         if (params.get('venue_scan') === '1') setIsVenueScan(true);
+      }
+      if (hash === 'contest' || raw.toLowerCase().includes('contest')) {
+        setRoute('contest');
+        return;
       }
       if (raw.includes('id=') || raw.includes('venue_scan=') || hash === 'events') {
         setRoute('events');
@@ -155,10 +167,18 @@ const HsgMobileShell: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [isAuthenticated, route]);
 
-  // On-mount deep-link check: If QR code contains event id, vt, or venue_scan, activate events route immediately
+  // On-mount deep-link check: If URL or QR contains contest or event id, vt, or venue_scan, activate route immediately
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const raw = window.location.hash || window.location.search;
+      if (raw.toLowerCase().includes('contest')) {
+        const match = raw.match(/[?&]id=([^&]+)/);
+        if (match && match[1]) {
+          setSelectedContestId(decodeURIComponent(match[1]));
+        }
+        setRoute('contest');
+        return;
+      }
       const match = raw.match(/[?&]id=([^&]+)/);
       if (match && match[1]) {
         setSelectedEventId(decodeURIComponent(match[1]));
