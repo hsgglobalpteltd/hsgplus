@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ArrowDownLeft,
   ArrowLeft,
+  ArrowUp,
   ArrowUpRight,
   Check,
   CheckCircle2,
@@ -351,39 +352,233 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     setLocalActivities((prev) => [act, ...prev.filter((item) => item.id !== act.id)].slice(0, 50));
   };
 
+  // Base set of 24 realistic activity entries (3 batches of 8 cards)
+  const BASE_SAMPLE_ACTIVITIES: ActivityItem[] = useMemo(() => [
+    {
+      id: 'mock-claim-approved',
+      category: 'Receipt Claim',
+      title: 'Receipt Claim #SS8890 Approved',
+      description: 'Cashback +$55.00 & +1,000 pts verified and credited to available wallet balance.',
+      timestamp: Date.now() - 3600000 * 2,
+      badge: { label: 'Verified', variant: 'emerald' },
+      iconType: 'check',
+    },
+    {
+      id: 'mock-claim-pending',
+      category: 'Receipt Claim',
+      title: 'Receipt Claim #SS3390 Submitted',
+      description: 'Receipt uploaded for verification (Est. +$33.90 cashback & +980 pts).',
+      timestamp: Date.now() - 3600000 * 6,
+      badge: { label: 'Pending Verify', variant: 'amber' },
+      iconType: 'receipt',
+    },
+    {
+      id: 'mock-welcome',
+      category: 'Account',
+      title: 'Welcome Bonus Credited',
+      description: 'Welcome to HSG+ Community! Log in with WhatsApp to access full wallet features.',
+      timestamp: Date.now() - 3600000 * 18,
+      badge: { label: 'Reward', variant: 'blue' },
+      iconType: 'shield',
+    },
+    {
+      id: 'mock-streak',
+      category: 'Reward',
+      title: 'Weekly Streak 4X Achieved',
+      description: 'Maintained 4-week check-in streak across partner supermarkets (+150 pts).',
+      timestamp: Date.now() - 86400000 * 1.5,
+      badge: { label: 'Streak', variant: 'purple' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-social-ig',
+      category: 'Reward',
+      title: 'Instagram Story Tag Verified',
+      description: 'Tagged @hsgglobal.sg with your verified retail purchase (+250 pts).',
+      timestamp: Date.now() - 86400000 * 2.2,
+      badge: { label: 'Social', variant: 'emerald' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-contest-gold',
+      category: 'Reward',
+      title: 'Golden Cart Giveaway Entry',
+      description: 'Contest entry registered and submitted for prize pool.',
+      timestamp: Date.now() - 86400000 * 3,
+      badge: { label: 'Contest', variant: 'blue' },
+      iconType: 'check',
+    },
+    {
+      id: 'mock-checkin-fairprice',
+      category: 'Receipt Claim',
+      title: 'Event RSVP: FairPrice Hub Jurong Point',
+      description: 'Checked in at partner supermarket campaign booth (+50 pts).',
+      timestamp: Date.now() - 86400000 * 3.8,
+      badge: { label: 'Checked-In', variant: 'emerald' },
+      iconType: 'check',
+    },
+    {
+      id: 'mock-claim-approved-2',
+      category: 'Receipt Claim',
+      title: 'Receipt Claim #SS4421 Approved',
+      description: 'Cashback +$21.90 & +420 pts verified and credited to wallet balance.',
+      timestamp: Date.now() - 86400000 * 4.5,
+      badge: { label: 'Verified', variant: 'emerald' },
+      iconType: 'check',
+    },
+    // --- Batch 2: Items 9 to 16 ---
+    {
+      id: 'mock-paynow-w1',
+      category: 'Withdrawal',
+      title: 'PayNow Withdrawal Completed',
+      description: 'PayNow payout of $50.00 transferred directly to your bank account.',
+      timestamp: Date.now() - 86400000 * 5.2,
+      badge: { label: 'Completed', variant: 'emerald' },
+      iconType: 'wallet',
+    },
+    {
+      id: 'mock-ref-bonus-1',
+      category: 'Reward',
+      title: 'Friend Referral Bonus #REF442',
+      description: 'Your invited friend completed their first verified receipt claim (+$5.00 cash).',
+      timestamp: Date.now() - 86400000 * 6,
+      badge: { label: 'Rewarded', variant: 'emerald' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-flash-weekend',
+      category: 'Reward',
+      title: 'Weekend 2X Multiplier Cashback',
+      description: 'Double point multiplier applied for weekend receipt submission (+300 pts).',
+      timestamp: Date.now() - 86400000 * 7,
+      badge: { label: 'Multiplier', variant: 'purple' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-claim-pending-2',
+      category: 'Receipt Claim',
+      title: 'Receipt Claim #SS7712 Submitted',
+      description: 'Receipt uploaded for validation (Est. +$18.50 cashback & +350 pts).',
+      timestamp: Date.now() - 86400000 * 8,
+      badge: { label: 'Pending Verify', variant: 'amber' },
+      iconType: 'receipt',
+    },
+    {
+      id: 'mock-recipe-contest',
+      category: 'Reward',
+      title: 'Recipe Creator Contest — 3rd Place',
+      description: 'Community recipe showcase prize credited to available wallet (+$25.00 cash).',
+      timestamp: Date.now() - 86400000 * 9.5,
+      badge: { label: 'Winner', variant: 'blue' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-checkin-coldstorage',
+      category: 'Receipt Claim',
+      title: 'Store Check-in: Cold Storage Plaza',
+      description: 'Scanned in-store shelf QR code for special sampling promotion (+80 pts).',
+      timestamp: Date.now() - 86400000 * 11,
+      badge: { label: 'Checked-In', variant: 'emerald' },
+      iconType: 'check',
+    },
+    {
+      id: 'mock-settings-pin',
+      category: 'Account',
+      title: 'Fast 4-Digit Security PIN Bound',
+      description: 'Fast login PIN successfully configured for seamless account security.',
+      timestamp: Date.now() - 86400000 * 12.5,
+      badge: { label: 'Saved', variant: 'blue' },
+      iconType: 'shield',
+    },
+    {
+      id: 'mock-claim-approved-3',
+      category: 'Receipt Claim',
+      title: 'Receipt Claim #SS1040 Approved',
+      description: 'Cashback +$14.50 & +200 pts verified and credited to wallet balance.',
+      timestamp: Date.now() - 86400000 * 14,
+      badge: { label: 'Verified', variant: 'emerald' },
+      iconType: 'check',
+    },
+    // --- Batch 3: Items 17 to 24 ---
+    {
+      id: 'mock-paynow-w2',
+      category: 'Withdrawal',
+      title: 'PayNow Withdrawal Completed',
+      description: 'PayNow payout of $35.00 transferred directly to your bank account.',
+      timestamp: Date.now() - 86400000 * 16,
+      badge: { label: 'Completed', variant: 'emerald' },
+      iconType: 'wallet',
+    },
+    {
+      id: 'mock-tiktok-order',
+      category: 'Order',
+      title: 'Merch Order #ORD-8812 Delivered',
+      description: 'Redeemed HSG+ Running Cap delivered to your residential address.',
+      timestamp: Date.now() - 86400000 * 18,
+      badge: { label: 'Delivered', variant: 'emerald' },
+      iconType: 'order',
+    },
+    {
+      id: 'mock-ref-bonus-2',
+      category: 'Reward',
+      title: 'Friend Referral Bonus #REF901',
+      description: 'Your invited friend completed their first verified receipt claim (+$5.00 cash).',
+      timestamp: Date.now() - 86400000 * 20,
+      badge: { label: 'Rewarded', variant: 'emerald' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-milestone-explorer',
+      category: 'Reward',
+      title: 'HSG Explorer Milestone Badge',
+      description: 'Unlocked Explorer Tier 2 for shopping at 3 distinct retailer partner brands.',
+      timestamp: Date.now() - 86400000 * 22,
+      badge: { label: 'Tier Up', variant: 'purple' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-silver-tier',
+      category: 'Reward',
+      title: 'Silver Tier Monthly Bonus',
+      description: 'Monthly active member recognition grant credited to account (+100 pts).',
+      timestamp: Date.now() - 86400000 * 25,
+      badge: { label: 'VIP Bonus', variant: 'blue' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-eco-receipt',
+      category: 'Reward',
+      title: 'Earth Day Eco-Receipt Promotion',
+      description: 'Digital e-receipt submission reward bonus credited (+100 pts).',
+      timestamp: Date.now() - 86400000 * 28,
+      badge: { label: 'Eco Bonus', variant: 'emerald' },
+      iconType: 'gift',
+    },
+    {
+      id: 'mock-profile-update',
+      category: 'Account',
+      title: 'Profile & Social Usernames Saved',
+      description: 'Account member profile and social handles updated.',
+      timestamp: Date.now() - 86400000 * 30,
+      badge: { label: 'Saved', variant: 'blue' },
+      iconType: 'settings',
+    },
+    {
+      id: 'mock-account-registered',
+      category: 'Account',
+      title: 'Account Registered & Verified',
+      description: 'Account verified via WhatsApp and registered to HSG+ Community.',
+      timestamp: Date.now() - 86400000 * 32,
+      badge: { label: 'Verified', variant: 'emerald' },
+      iconType: 'shield',
+    },
+  ], []);
+
   // Compile full activity feed
   const allActivities = useMemo<ActivityItem[]>(() => {
-    // If guest / not logged in, include attractive sample activity entries matching teaser wallet balances
+    // If guest / not logged in, return base 24 sample entries
     if (!isAuthenticated) {
-      return [
-        {
-          id: 'mock-claim-approved',
-          category: 'Receipt Claim',
-          title: 'Receipt Claim #SS8890 Approved',
-          description: 'Cashback +$55.00 & +1,000 pts verified and credited to available wallet balance.',
-          timestamp: Date.now() - 3600000 * 3,
-          badge: { label: 'Verified', variant: 'emerald' },
-          iconType: 'check',
-        },
-        {
-          id: 'mock-claim-pending',
-          category: 'Receipt Claim',
-          title: 'Receipt Claim #SS3390 Submitted',
-          description: 'Receipt uploaded for verification (Est. +$33.90 cashback & +980 pts).',
-          timestamp: Date.now() - 3600000 * 12,
-          badge: { label: 'Pending Verify', variant: 'amber' },
-          iconType: 'receipt',
-        },
-        {
-          id: 'mock-welcome',
-          category: 'Account',
-          title: 'Welcome Bonus Credited',
-          description: 'Welcome to HSG+ Community! Log in with WhatsApp to access full wallet features.',
-          timestamp: Date.now() - 86400000 * 2,
-          badge: { label: 'Reward', variant: 'blue' },
-          iconType: 'shield',
-        }
-      ];
+      return BASE_SAMPLE_ACTIVITIES;
     }
 
     const list: ActivityItem[] = [...localActivities];
@@ -932,6 +1127,15 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       });
     }
 
+    // Ensure at least 24 total entries for smooth 8-card batch pagination testing
+    if (list.length < 24) {
+      BASE_SAMPLE_ACTIVITIES.forEach((sample) => {
+        if (!list.some((it) => it.id === sample.id || it.title === sample.title)) {
+          list.push(sample);
+        }
+      });
+    }
+
     // Sort newest first & deduplicate by ID
     const seen = new Set<string>();
     return list
@@ -949,6 +1153,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     db.events,
     db.user,
     isAuthenticated,
+    BASE_SAMPLE_ACTIVITIES,
   ]);
 
   // Withdrawal state
@@ -1109,36 +1314,117 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     setWalletActionTab(null);
   };
 
-  // Lazy load activities: first display is 8, load 8 on scroll down
+  // Custom Batch Pagination with Magnet-Pull Trigger (Renders exactly 8 cards initially)
   const [visibleActivityCount, setVisibleActivityCount] = useState<number>(8);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [pullUpDistance, setPullUpDistance] = useState<number>(0);
+  const [isPullingUp, setIsPullingUp] = useState<boolean>(false);
 
-  useEffect(() => {
-    if (activeSubTab !== 'activity') return;
-    if (visibleActivityCount >= allActivities.length) return;
+  const touchStartYRef = useRef<number | null>(null);
+  const canPullUpRef = useRef<boolean>(false);
+  const isMouseDownRef = useRef<boolean>(false);
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (first.isIntersecting) {
-          setVisibleActivityCount((prev) => Math.min(prev + 8, allActivities.length));
-        }
-      },
-      {
-        root: null,
-        rootMargin: '120px',
-        threshold: 0.1,
-      }
-    );
+  const PULL_UP_THRESHOLD = 42; // px needed to trigger batch load on release
 
-    const el = loadMoreRef.current;
-    if (el) observer.observe(el);
+  const remainingActivityCount = Math.max(0, allActivities.length - visibleActivityCount);
+  const nextBatchCount = Math.min(8, remainingActivityCount);
 
-    return () => {
-      if (el) observer.unobserve(el);
-      observer.disconnect();
-    };
-  }, [activeSubTab, visibleActivityCount, allActivities.length]);
+  const checkIsAtBottom = () => {
+    const scrollParent = tabsStickyRef.current?.closest('main') || document.querySelector('main');
+    if (!scrollParent) return true;
+    const distanceToBottom = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight;
+    return distanceToBottom <= 18;
+  };
+
+  const triggerLoadNextBatch = () => {
+    if (isLoadingMore || visibleActivityCount >= allActivities.length) return;
+    setIsLoadingMore(true);
+    setIsPullingUp(false);
+    setPullUpDistance(28); // Keep indicator active during load
+
+    // Brief simulated network delay (500ms) for natural native feedback
+    window.setTimeout(() => {
+      setVisibleActivityCount((prev) => Math.min(prev + 8, allActivities.length));
+      setIsLoadingMore(false);
+      setPullUpDistance(0);
+    }, 500);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isLoadingMore || visibleActivityCount >= allActivities.length) return;
+    if (checkIsAtBottom()) {
+      touchStartYRef.current = e.touches[0].clientY;
+      canPullUpRef.current = true;
+    } else {
+      touchStartYRef.current = null;
+      canPullUpRef.current = false;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!canPullUpRef.current || touchStartYRef.current === null || isLoadingMore || visibleActivityCount >= allActivities.length) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = touchStartYRef.current - currentY; // Positive when dragging UPWARD
+    
+    if (deltaY > 0 && checkIsAtBottom()) {
+      // Magnetic resistance curve with dampening
+      const damped = Math.min(65, Math.pow(deltaY, 0.8) * 1.55);
+      setPullUpDistance(damped);
+      setIsPullingUp(true);
+    } else if (deltaY <= 0) {
+      setPullUpDistance(0);
+      setIsPullingUp(false);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!canPullUpRef.current || touchStartYRef.current === null) return;
+    touchStartYRef.current = null;
+    canPullUpRef.current = false;
+
+    if (pullUpDistance >= PULL_UP_THRESHOLD && !isLoadingMore && visibleActivityCount < allActivities.length) {
+      triggerLoadNextBatch();
+    } else {
+      setPullUpDistance(0);
+      setIsPullingUp(false);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isLoadingMore || visibleActivityCount >= allActivities.length) return;
+    if (checkIsAtBottom()) {
+      touchStartYRef.current = e.clientY;
+      isMouseDownRef.current = true;
+      canPullUpRef.current = true;
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || !canPullUpRef.current || touchStartYRef.current === null || isLoadingMore || visibleActivityCount >= allActivities.length) return;
+    const deltaY = touchStartYRef.current - e.clientY;
+    if (deltaY > 0 && checkIsAtBottom()) {
+      const damped = Math.min(65, Math.pow(deltaY, 0.8) * 1.55);
+      setPullUpDistance(damped);
+      setIsPullingUp(true);
+    } else if (deltaY <= 0) {
+      setPullUpDistance(0);
+      setIsPullingUp(false);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!isMouseDownRef.current) return;
+    isMouseDownRef.current = false;
+    handleTouchEnd();
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (isLoadingMore || visibleActivityCount >= allActivities.length) return;
+    if (checkIsAtBottom() && e.deltaY > 25) {
+      triggerLoadNextBatch();
+    }
+  };
 
   const visibleActivities = useMemo(() => {
     return allActivities.slice(0, visibleActivityCount);
@@ -1597,7 +1883,22 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           </div>
 
           {allActivities.length > 0 ? (
-            <div className="w-full space-y-2.5">
+            <div
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onWheel={handleWheel}
+              style={{
+                transform: isPullingUp ? `translateY(-${pullUpDistance * 0.42}px)` : 'none',
+                transition: isPullingUp ? 'none' : 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)',
+              }}
+              className="w-full space-y-2.5 transition-transform"
+            >
               {visibleActivities.map((act) => (
                 <div
                   key={act.id}
@@ -1606,7 +1907,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                       setSelectedReceiptOrder(act.orderData);
                     }
                   }}
-                  className={`w-full p-3.5 rounded-2xl bg-white shadow-2xs flex items-start gap-3 transition ${
+                  className={`w-full p-3.5 rounded-2xl bg-white shadow-2xs flex items-start gap-3 transition animate-in fade-in slide-in-from-bottom-1 duration-300 ${
                     act.category === 'Order' ? 'cursor-pointer hover:bg-zinc-50/80 active:scale-[0.99]' : ''
                   }`}
                 >
@@ -1645,24 +1946,79 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 </div>
               ))}
 
-              {/* Lazy Load Sentinel & Load More Trigger */}
+              {/* Batch Pagination with Magnet-Pull Trigger Footer */}
               {visibleActivityCount < allActivities.length ? (
-                <div ref={loadMoreRef} className="pt-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setVisibleActivityCount((prev) => Math.min(prev + 8, allActivities.length))}
-                    className="w-full h-10 rounded-2xl bg-white hover:bg-zinc-50 border border-zinc-200/80 text-xs font-bold text-zinc-700 shadow-2xs active:scale-[0.99] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                <div
+                  ref={bottomSentinelRef}
+                  onClick={triggerLoadNextBatch}
+                  className="pt-3 pb-8 flex flex-col items-center justify-center transition cursor-pointer select-none"
+                  style={{
+                    transform: isPullingUp ? `translateY(-${pullUpDistance * 0.35}px)` : 'none',
+                    transition: isPullingUp ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                  }}
+                >
+                  <div
+                    className={`h-11 px-5 rounded-full border flex items-center justify-center gap-2.5 shadow-2xs transition-all duration-200 ${
+                      isLoadingMore
+                        ? 'bg-white border-zinc-200 text-zinc-600 scale-100'
+                        : pullUpDistance >= PULL_UP_THRESHOLD
+                        ? 'bg-[#141416] border-[#141416] text-[#FFEA00] scale-[1.03] shadow-md'
+                        : 'bg-white hover:bg-zinc-50 border-zinc-200/90 text-zinc-700 active:scale-[0.98]'
+                    }`}
                   >
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />
-                    <span>Loading more activities...</span>
-                    <span className="text-[10px] text-zinc-400 font-normal">
-                      ({visibleActivities.length} of {allActivities.length})
-                    </span>
-                  </button>
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-[#EC008C]" />
+                        <span className="text-xs font-bold text-zinc-800">
+                          Loading next {nextBatchCount} activities...
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div
+                          className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 ${
+                            pullUpDistance >= PULL_UP_THRESHOLD
+                              ? 'bg-[#FFEA00] text-[#141416] rotate-180 scale-110'
+                              : 'bg-zinc-100 text-zinc-600'
+                          }`}
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold">
+                            {pullUpDistance >= PULL_UP_THRESHOLD
+                              ? `Release to load more (${nextBatchCount} items)`
+                              : `Pull up to load more (${nextBatchCount} items)`}
+                          </span>
+                          <span
+                            className={`text-[10px] font-medium ${
+                              pullUpDistance >= PULL_UP_THRESHOLD ? 'text-zinc-300' : 'text-zinc-400'
+                            }`}
+                          >
+                            ({visibleActivities.length} of {allActivities.length})
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Magnetic Tension Indicator Hint while dragging */}
+                  {!isLoadingMore && pullUpDistance > 6 && (
+                    <div className="mt-2 text-[10px] font-medium text-zinc-400 flex items-center gap-1 animate-in fade-in">
+                      <span>Magnet pull: {Math.min(100, Math.round((pullUpDistance / PULL_UP_THRESHOLD) * 100))}%</span>
+                    </div>
+                  )}
                 </div>
-              ) : allActivities.length > 8 ? (
-                <div className="pt-2 text-center text-[11px] text-zinc-400 font-medium">
-                  All {allActivities.length} activities loaded
+              ) : allActivities.length > 0 ? (
+                /* Completion State: Polite message upon exhausting array */
+                <div className="pt-4 pb-10 flex flex-col items-center justify-center text-center animate-in fade-in duration-300">
+                  <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-zinc-100/90 text-zinc-600 text-xs font-semibold border border-zinc-200/70 shadow-2xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>You have reached the end of history</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 mt-1.5">
+                    All {allActivities.length} activities loaded
+                  </span>
                 </div>
               ) : null}
             </div>

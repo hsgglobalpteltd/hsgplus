@@ -279,9 +279,12 @@ export interface HsgEvent {
   date_timestamp: number;
   time_label: string;
   location: string;
+  location_name?: string;
+  location_address?: string;
   distance_or_format: string;
   fee_amount: number;
   fee_points?: number;
+  venue_token?: string;
   duration_hours?: number;
   reward_points?: number;
   outcome_url?: string;

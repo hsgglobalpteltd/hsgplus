@@ -45,15 +45,22 @@ const HsgMobileShell: React.FC = () => {
 
   const [route, setRoute] = useState<ActiveRoute>(() => {
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.replace('#', '').toLowerCase();
+      const raw = window.location.hash || window.location.search;
+      if (raw.includes('id=') || raw.includes('venue_scan=') || raw.toLowerCase().includes('events')) {
+        return 'events';
+      }
+      const rawHash = window.location.hash.replace('#', '');
+      const hash = rawHash.split('?')[0].toLowerCase();
       if (
-        hash === 'account' ||
-        hash === 'events' ||
-        hash === 'contest' ||
-        hash === 'redeem' ||
-        hash === 'invite' ||
-        hash === 'transactions' ||
-        hash === 'snap'
+        [
+          'account',
+          'events',
+          'contest',
+          'redeem',
+          'invite',
+          'transactions',
+          'snap',
+        ].includes(hash)
       ) {
         return hash as ActiveRoute;
       }
@@ -106,14 +113,19 @@ const HsgMobileShell: React.FC = () => {
 
   useEffect(() => {
     const handleHashChange = () => {
+      const raw = window.location.hash || window.location.search;
       const rawHash = window.location.hash.replace('#', '');
       const hash = rawHash.split('?')[0].toLowerCase();
-      if (rawHash.includes('?')) {
-        const queryStr = rawHash.split('?')[1] || '';
+      if (raw.includes('?')) {
+        const queryStr = raw.split('?')[1] || '';
         const params = new URLSearchParams(queryStr);
         const eventId = params.get('id');
         if (eventId) setSelectedEventId(eventId);
         if (params.get('venue_scan') === '1') setIsVenueScan(true);
+      }
+      if (raw.includes('id=') || raw.includes('venue_scan=') || hash === 'events') {
+        setRoute('events');
+        return;
       }
       if (hash === 'transactions' && !isAuthenticated) {
         setRoute('home');
@@ -122,7 +134,6 @@ const HsgMobileShell: React.FC = () => {
       }
       if (
         hash === 'account' ||
-        hash === 'events' ||
         hash === 'contest' ||
         hash === 'redeem' ||
         hash === 'invite' ||
@@ -144,6 +155,28 @@ const HsgMobileShell: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [isAuthenticated, route]);
 
+  // On-mount deep-link check: If QR code contains event id, vt, or venue_scan, activate events route immediately
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const raw = window.location.hash || window.location.search;
+      const match = raw.match(/[?&]id=([^&]+)/);
+      if (match && match[1]) {
+        setSelectedEventId(decodeURIComponent(match[1]));
+        setRoute('events');
+      }
+      const vtMatch = raw.match(/[?&]vt=([^&]+)/);
+      if (vtMatch && vtMatch[1]) {
+        setVenueToken(decodeURIComponent(vtMatch[1]));
+        setIsVenueScan(true);
+        setRoute('events');
+      }
+      if (raw.includes('venue_scan=1')) {
+        setIsVenueScan(true);
+        setRoute('events');
+      }
+    }
+  }, []);
+
   // Strict route guard: Transaction History cannot be accessed without login
   useEffect(() => {
     if (!isAuthenticated && route === 'transactions') {
@@ -163,10 +196,16 @@ const HsgMobileShell: React.FC = () => {
     const match = raw.match(/[?&]id=([^&]+)/);
     return match ? decodeURIComponent(match[1]) : null;
   });
+  const [venueToken, setVenueToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = window.location.hash || window.location.search;
+    const match = raw.match(/[?&]vt=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  });
   const [isVenueScan, setIsVenueScan] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const raw = window.location.hash || window.location.search;
-    return raw.includes('venue_scan=1');
+    return raw.includes('venue_scan=1') || raw.includes('vt=');
   });
   const [selectedContestId, setSelectedContestId] = useState<string | null>(
     null
@@ -548,6 +587,7 @@ const HsgMobileShell: React.FC = () => {
                 setSelectedEventId(id);
                 if (!id) {
                   setIsVenueScan(false);
+                  setVenueToken(null);
                   if (eventBackRoute === 'contest') {
                     setEventBackRoute('events');
                     navigateTo('contest');
@@ -557,6 +597,7 @@ const HsgMobileShell: React.FC = () => {
               onBackToSource={() => {
                 setSelectedEventId(null);
                 setIsVenueScan(false);
+                setVenueToken(null);
                 if (eventBackRoute === 'contest') {
                   setEventBackRoute('events');
                   navigateTo('contest');
@@ -566,7 +607,11 @@ const HsgMobileShell: React.FC = () => {
               }}
               backLabel={eventBackRoute === 'contest' ? 'Contest' : undefined}
               isVenueScan={isVenueScan}
-              onClearVenueScan={() => setIsVenueScan(false)}
+              venueToken={venueToken}
+              onClearVenueScan={() => {
+                setIsVenueScan(false);
+                setVenueToken(null);
+              }}
               scrollContainerRef={mainScrollRef}
             />
           </div>

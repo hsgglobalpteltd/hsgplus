@@ -124,10 +124,25 @@ export const HomePage: React.FC<HomePageProps> = ({
     return () => window.clearInterval(timer);
   }, []);
 
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
   const upcomingEvents = db.events
-    .filter((e) => e.date_timestamp >= now - 7 * 86400000)
+    .filter((e) => e.date_timestamp >= startOfToday)
     .sort((a, b) => a.date_timestamp - b.date_timestamp);
   const nextEvent = upcomingEvents[0] || null;
+
+  const highlightPhotos = React.useMemo(() => {
+    return (db.highlights || []).filter((h) => Boolean(h.image_url));
+  }, [db.highlights]);
+
+  const [activeHighlightIdx, setActiveHighlightIdx] = useState<number>(0);
+
+  useEffect(() => {
+    if (highlightPhotos.length <= 1) return;
+    const interval = window.setInterval(() => {
+      setActiveHighlightIdx((prev) => (prev + 1) % highlightPhotos.length);
+    }, 3500);
+    return () => window.clearInterval(interval);
+  }, [highlightPhotos.length]);
 
   const availableCash = isAuthenticated && db.user
     ? Number(db.user.wallet_balance || 0)
@@ -238,29 +253,55 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         </button>
 
-        <button
-          type="button"
-          onClick={() => onOpenEvents(nextEvent?.id)}
-          className="w-full p-4 rounded-3xl bg-white text-[#141416] text-left shadow-sm active:scale-[0.98] transition flex flex-col justify-between min-h-[116px]"
-        >
-          <div className="flex items-center justify-between w-full">
-            <span className="text-xs text-zinc-500 font-medium">Next Event</span>
-            <Calendar className="w-4 h-4 text-[#EC008C]" />
-          </div>
-          {nextEvent ? (
-            <>
-              <div className="text-sm font-bold leading-snug line-clamp-2 mt-1">
-                {nextEvent.title}
+        {nextEvent ? (
+          <button
+            type="button"
+            onClick={() => onOpenEvents(nextEvent.id)}
+            className="w-full p-4 rounded-3xl bg-white text-[#141416] text-left shadow-sm active:scale-[0.98] transition flex flex-col justify-between min-h-[116px]"
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs text-zinc-500 font-medium">Next Event</span>
+              <Calendar className="w-4 h-4 text-[#EC008C]" />
+            </div>
+            <div className="text-sm font-bold leading-snug line-clamp-2 mt-1">
+              {nextEvent.title}
+            </div>
+            <div className="text-[11px] font-semibold text-zinc-500 mt-1 flex items-center justify-between w-full">
+              <span>{formatDate(nextEvent.date_timestamp)}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-[#141416]" />
+            </div>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('post-highlights-section');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+            className="w-full h-full rounded-3xl bg-zinc-100 shadow-sm active:scale-[0.98] transition relative min-h-[116px] overflow-hidden cursor-pointer border border-zinc-200/50"
+          >
+            {highlightPhotos.length > 0 ? (
+              highlightPhotos.map((item, idx) => (
+                <img
+                  key={item.id || idx}
+                  src={item.image_url}
+                  alt="Post Highlight"
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ease-in-out select-none ${
+                    idx === activeHighlightIdx
+                      ? 'opacity-100 z-10'
+                      : 'opacity-0 pointer-events-none'
+                  }`}
+                />
+              ))
+            ) : (
+              <div className="w-full h-full min-h-[116px] flex items-center justify-center p-4 bg-white text-zinc-400 text-xs text-center font-medium">
+                No highlights
               </div>
-              <div className="text-[11px] font-semibold text-zinc-500 mt-1 flex items-center justify-between w-full">
-                <span>{formatDate(nextEvent.date_timestamp)}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-[#141416]" />
-              </div>
-            </>
-          ) : (
-            <div className="text-xs text-zinc-400 mt-2">No upcoming run</div>
-          )}
-        </button>
+            )}
+          </button>
+        )}
       </div>
 
       {/* 2. ACTIVE CONTESTS (Hidden when no active contest exists) */}
@@ -400,7 +441,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       </section>
 
       {/* 4. POST HIGHLIGHTS — SCROLL LEFT */}
-      <section className="w-full">
+      <section id="post-highlights-section" className="w-full scroll-mt-4">
         <div className="flex items-center justify-between mb-2.5">
           <h2 className="text-base font-bold text-[#141416]">Post Highlights</h2>
           <span className="text-xs font-medium text-zinc-500">Swipe left &larr;</span>

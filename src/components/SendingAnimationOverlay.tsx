@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 interface SendingAnimationOverlayProps {
@@ -16,20 +16,26 @@ export const SendingAnimationOverlay: React.FC<SendingAnimationOverlayProps> = (
   durationMs = 2500,
   onComplete,
 }) => {
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   useEffect(() => {
     if (!isOpen) return;
 
     const timer = setTimeout(() => {
-      onComplete();
+      onCompleteRef.current();
     }, durationMs);
 
     return () => clearTimeout(timer);
-  }, [isOpen, durationMs, onComplete]);
+  }, [isOpen, durationMs]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#FFEA00] px-6 text-center select-none animate-in fade-in duration-150">
+    <div
+      onClick={() => onCompleteRef.current()}
+      className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#FFEA00] px-6 text-center select-none animate-in fade-in duration-150 cursor-pointer"
+    >
       <div className="flex flex-col items-center justify-center max-w-xs -mt-10">
         <div className="w-56 h-56 flex items-center justify-center">
           <DotLottieReact

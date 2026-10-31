@@ -132,7 +132,8 @@ interface HsgDataContextValue {
   ) => Promise<{ ok: boolean; message: string }>;
   checkInEvent: (
     eventId: string,
-    scannedCode?: string
+    scannedCode?: string,
+    venueToken?: string
   ) => Promise<{ ok: boolean; message: string; reward_points?: number; already_checked_in?: boolean }>;
   submitContestEntry: (
     answers: Record<string, string | number>,
@@ -404,9 +405,12 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                       minute: '2-digit',
                     }),
                     location: ev.location_name || ev.location_address || 'Singapore',
+                    location_name: ev.location_name || '',
+                    location_address: ev.location_address || '',
                     distance_or_format: ev.distance_or_format || ev.format || '',
                     fee_amount: Number(ev.fee_amount || 0),
                     fee_points: Number(ev.fee_points || 0),
+                    venue_token: ev.venue_token || '',
                     duration_hours: Number(ev.duration_hours || 4),
                     reward_points: Number(ev.reward_points || 0),
                     outcome_url: ev.outcome_url || '',
@@ -2078,10 +2082,11 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const checkInEvent = async (
     eventId: string,
-    scannedCode?: string
+    scannedCode?: string,
+    venueToken?: string
   ): Promise<{ ok: boolean; message: string; reward_points?: number; already_checked_in?: boolean }> => {
     if (!isAuthenticated || !db.user) {
-      requireAuth(() => checkInEvent(eventId, scannedCode));
+      requireAuth(() => checkInEvent(eventId, scannedCode, venueToken));
       return { ok: false, message: 'Please sign in first.' };
     }
     const target = db.events.find((e) => e.id === eventId);
@@ -2094,6 +2099,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           user_id: db.user.id || (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '',
           user_phone: db.user.phone_number,
           scanned_code: scannedCode || eventId,
+          venue_token: venueToken || '',
         }),
       });
       const data = await res.json();

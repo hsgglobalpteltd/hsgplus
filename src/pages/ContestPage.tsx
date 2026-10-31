@@ -268,6 +268,22 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
   const cd = getCountdownParts();
 
+  // Header countdown text for right-hand indicator (no seconds, matching title font size)
+  const countdownText = React.useMemo(() => {
+    if (isWinnersAnnounced) return 'Winners Announced';
+    if (!cd) return null;
+    if (cd.isEnded) return 'Contest ended';
+    if (cd.isUpcoming) {
+      if (cd.days > 0) return `Contest starts in ${cd.days} ${cd.days === 1 ? 'day' : 'days'}`;
+      if (cd.hours > 0) return `Contest starts in ${cd.hours} ${cd.hours === 1 ? 'hour' : 'hours'} ${cd.mins}min`;
+      return `Contest starts in ${cd.mins}min`;
+    }
+    // Active contest
+    if (cd.days > 0) return `Contest will end in ${cd.days} ${cd.days === 1 ? 'day' : 'days'}`;
+    if (cd.hours > 0) return `${cd.hours} ${cd.hours === 1 ? 'hour' : 'hours'} ${cd.mins}min`;
+    return `${cd.mins}min`;
+  }, [isWinnersAnnounced, cd]);
+
   // Submission handler (100% same like cashback campaign)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,23 +351,28 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   };
 
   return (
-    <div className="w-full px-5 pt-2 pb-8 space-y-4 font-primary">
+    <div className="w-full px-5 pt-0.5 pb-8 font-primary">
       {/* Top Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between min-h-[36px] py-0.5">
         <button
           type="button"
           onClick={onBack}
           title="Back"
-          className="w-9 h-9 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-95 transition"
+          className="w-9 h-9 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-95 transition shrink-0"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="text-xs font-bold text-[#141416]">Contest & Rewards</span>
+        {countdownText && (
+          <div className="flex items-center gap-1.5 text-xs font-bold text-[#141416]">
+            <span>{countdownText}</span>
+            <Clock className="w-3.5 h-3.5 text-[#141416] shrink-0" />
+          </div>
+        )}
       </div>
 
       {/* Switch between active contests if multiple */}
       {db.contests.length > 1 && (
-        <div className="w-full flex gap-2 overflow-x-auto no-scrollbar pb-1">
+        <div className="w-full flex gap-2 overflow-x-auto no-scrollbar pt-2 pb-1">
           {db.contests.map((c) => {
             const active = c.id === contest?.id;
             return (
@@ -373,52 +394,10 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       )}
 
       {contest ? (
-        <div className="w-full space-y-4">
-          {/* Header Block: Countdown + Edge-to-Edge Posters (Zero Gap between posters, with breathing room to description) */}
+        <div className="w-full space-y-4 mt-1.5">
+          {/* Header Block: Edge-to-Edge Posters (Zero Gap between posters, with breathing room to description) */}
           <div className="-mx-5 w-[calc(100%+2.5rem)] flex flex-col p-0 m-0 overflow-hidden pb-4">
-            {/* 1. CONTEST COUNTDOWN TIMER / ANNOUNCEMENT (FULL WIDTH) */}
-            {isWinnersAnnounced ? (
-              <div className="w-full px-5 py-3 bg-[#141416] text-white flex items-center justify-between text-xs shadow-xs">
-                <div className="flex items-center gap-2 font-bold text-amber-400">
-                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Winners Announced</span>
-                </div>
-              </div>
-            ) : cd ? (
-              <div className="w-full px-5 py-3 bg-[#141416] text-white flex items-center justify-between text-xs shadow-xs">
-                <div className="flex items-center gap-2 font-semibold text-zinc-300">
-                  <Clock className="w-3.5 h-3.5 text-[#EC008C]" />
-                  <span>
-                    {cd.isEnded
-                      ? 'Contest Ended'
-                      : cd.isUpcoming
-                      ? 'Starts In:'
-                      : 'Time Remaining:'}
-                  </span>
-                </div>
-                {!cd.isEnded ? (
-                  cd.days > 0 ? (
-                    <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[#FFEA00]">
-                      <span>{cd.days} {cd.days === 1 ? 'day' : 'days'}</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[#FFEA00]">
-                      <span>{String(cd.hours).padStart(2, '0')}h</span>
-                      <span>{String(cd.mins).padStart(2, '0')}m</span>
-                      <span className="text-[#EC008C]">
-                        {String(cd.secs).padStart(2, '0')}s
-                      </span>
-                    </div>
-                  )
-                ) : (
-                  <span className="text-xs font-bold text-zinc-400">
-                    Submission Window Closed
-                  </span>
-                )}
-              </div>
-            ) : null}
-
-            {/* 2. VERTICAL INSIDE POSTERS (EDGE-TO-EDGE, MAXIMUM 8) */}
+            {/* Inside Posters (Edge-to-Edge, maximum 8) */}
             {postersList.length > 0 && (
               <div className="w-full flex flex-col p-0 m-0 overflow-hidden">
                 {postersList.map((imgUrl, idx) => (
@@ -806,7 +785,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
               </div>
               <div className="space-y-1.5">
                 <h3 className="text-base font-extrabold text-[#141416]">
-                  You're in the Draw! 🎉
+                  Entry Submitted!
                 </h3>
                 <div
                   className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold ${
