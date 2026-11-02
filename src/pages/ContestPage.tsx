@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Calendar,
@@ -28,12 +28,14 @@ interface ContestPageProps {
   initialContestId?: string | null;
   onBack: () => void;
   onNavigateToEvent?: (eventId?: string) => void;
+  autoScrollToContent?: boolean;
 }
 
 export const ContestPage: React.FC<ContestPageProps> = ({
   initialContestId,
   onBack,
   onNavigateToEvent,
+  autoScrollToContent = false,
 }) => {
   const { db, submitContestEntry, showToast } = useHsgData();
 
@@ -57,6 +59,24 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const [isEnteringAnother, setIsEnteringAnother] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
+
+  // Reference for smooth scrolling directly down past posters to the submission/status section
+  const contentAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (autoScrollToContent && contentAnchorRef.current) {
+      const timer1 = window.setTimeout(() => {
+        contentAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+      const timer2 = window.setTimeout(() => {
+        contentAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 450);
+      return () => {
+        window.clearTimeout(timer1);
+        window.clearTimeout(timer2);
+      };
+    }
+  }, [autoScrollToContent, selectedContestId]);
 
   // Auto-scroll input into center view when tapped/focused to prevent keyboard covering
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -644,6 +664,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
 
           {/* 5. OUTCOME WINNER SCREEN (WHEN WINNERS ANNOUNCED OR WHEN ENDED) VS SUBMISSION FORM (WHEN ACTIVE) */}
+          <div ref={contentAnchorRef} className="scroll-mt-4" />
           {isWinnersAnnounced ? (
             /* ==========================================================
                WINNERS ANNOUNCED SCREEN (SHOWS ONCE WINNERS ARE DRAWN/ANNOUNCED)

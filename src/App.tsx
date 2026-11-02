@@ -230,6 +230,8 @@ const HsgMobileShell: React.FC = () => {
   const [selectedContestId, setSelectedContestId] = useState<string | null>(
     null
   );
+  const [contestAutoScroll, setContestAutoScroll] = useState<boolean>(false);
+  const [contestBackRoute, setContestBackRoute] = useState<'home' | 'events'>('home');
   const [isDesktopViewport, setIsDesktopViewport] = useState<boolean>(
     () => window.innerWidth > 768
   );
@@ -632,13 +634,28 @@ const HsgMobileShell: React.FC = () => {
                 setIsVenueScan(false);
                 setVenueToken(null);
               }}
+              onOpenContest={(contestId, autoScroll) => {
+                setSelectedContestId(contestId);
+                setContestAutoScroll(Boolean(autoScroll));
+                setContestBackRoute('events');
+                navigateTo('contest');
+              }}
               scrollContainerRef={mainScrollRef}
             />
           </div>
           {route === 'contest' && (
             <ContestPage
               initialContestId={selectedContestId}
-              onBack={() => navigateTo('home')}
+              autoScrollToContent={contestAutoScroll}
+              onBack={() => {
+                setContestAutoScroll(false);
+                if (contestBackRoute === 'events') {
+                  setContestBackRoute('home');
+                  navigateTo('events');
+                } else {
+                  navigateTo('home');
+                }
+              }}
               onNavigateToEvent={(eventId) => {
                 if (eventId) setSelectedEventId(eventId);
                 setEventBackRoute('contest');

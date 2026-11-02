@@ -79,6 +79,7 @@ interface EventsPageProps {
   onClearVenueScan?: () => void;
   onBackToSource?: () => void;
   backLabel?: string;
+  onOpenContest?: (contestId: string, autoScroll?: boolean) => void;
 }
 
 export const EventsPage: React.FC<EventsPageProps> = ({
@@ -90,6 +91,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
   onClearVenueScan,
   onBackToSource,
   backLabel,
+  onOpenContest,
 }) => {
   const { db, isAuthenticated, openLoginModal, rsvpEvent, checkInEvent, showToast } = useHsgData();
   const upcomingAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -447,6 +449,35 @@ export const EventsPage: React.FC<EventsPageProps> = ({
       (activeEvent.joined_count || 0) >= activeEvent.max_capacity && !isJoined;
     const hasCashbackFee = Number(activeEvent.fee_amount || 0) > 0;
     const feeAmount = Number(activeEvent.fee_amount || 0);
+
+    // Detect if activeEvent is tied up to a contest
+    const tiedContest = db.contests.find(
+      (c) =>
+        String(c.required_event_id || '').toLowerCase() ===
+        String(activeEvent.id || '').toLowerCase()
+    );
+
+    const hasSubmittedTiedContest = (() => {
+      if (!tiedContest) return false;
+      const uid =
+        db.user?.id ||
+        (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') ||
+        '';
+      const phone =
+        (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_phone') : '') ||
+        db.user?.phone_number ||
+        '';
+      const cleanPhone = phone.replace(/\D/g, '');
+
+      return (db.contest_submissions || []).some((s) => {
+        const matchContest =
+          String(s.contest_id || '').toLowerCase() === String(tiedContest.id || '').toLowerCase();
+        if (!matchContest) return false;
+        if (uid && s.user_id === uid) return true;
+        if (cleanPhone && s.user_phone && s.user_phone.replace(/\D/g, '') === cleanPhone) return true;
+        return false;
+      });
+    })();
 
     return (
       <div className="w-full px-5 pt-2 pb-6 space-y-4">
@@ -807,6 +838,19 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     </a>
                   )}
 
+                {tiedContest && isCheckedIn && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenContest) onOpenContest(tiedContest.id, true);
+                    }}
+                    className="w-full h-11 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>🏆</span>
+                    <span>{hasSubmittedTiedContest ? 'View Contest Status' : 'Submit Contest Entry'}</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -835,13 +879,26 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                   </div>
                 </div>
 
+                {tiedContest && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenContest) onOpenContest(tiedContest.id, true);
+                    }}
+                    className="w-full h-11 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>🏆</span>
+                    <span>{hasSubmittedTiedContest ? 'View Contest Status' : 'Submit Contest Entry'}</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
                     if (onBackToSource) onBackToSource();
                     else onSelectEvent(null);
                   }}
-                  className="w-full h-11 rounded-full bg-[#141416] text-white font-bold text-xs active:scale-95 transition cursor-pointer"
+                  className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
                 >
                   {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                 </button>
@@ -892,7 +949,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
 
                 {!isCheckInOpen && (
                   <p className="text-[11px] text-zinc-500 text-center">
-                    Check-in opens 2 hrs before event on {formatDate(activeEvent.date_timestamp)}
+                    Check-in opens 30 mins before event on {formatDate(activeEvent.date_timestamp)}
                   </p>
                 )}
                 {isCheckInOpen && (
@@ -900,6 +957,17 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     ● Check-in is now open! Tap Check-In to scan or show QR
                   </p>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onBackToSource) onBackToSource();
+                    else onSelectEvent(null);
+                  }}
+                  className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                >
+                  {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
+                </button>
               </div>
             ) : (
               /* STATE D: NOT JOINED YET (Left: Join / Join with $.., Right: Skip closes page) */
@@ -944,6 +1012,17 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     Notice: Event fee is non-refundable upon RSVP.
                   </p>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onBackToSource) onBackToSource();
+                    else onSelectEvent(null);
+                  }}
+                  className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                >
+                  {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
+                </button>
               </div>
             )}
           </div>
