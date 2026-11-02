@@ -355,6 +355,7 @@ export interface ContestQuestionItem {
     | 'range_number'
     | 'scale'
     | 'number'
+    | 'url'
     | 'radio'
     | string;
   options?: string[];

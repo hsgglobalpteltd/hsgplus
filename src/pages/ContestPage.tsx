@@ -15,6 +15,7 @@ import {
   Trophy,
   X,
   AlertCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { compressImageFile } from '../lib/imageCompressor';
@@ -1018,11 +1019,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                 </p>
               </div>
             </div>
-          ) : isQuotaReached ? (
-            /* ==========================================================
-               ALL ALLOWED ENTRIES SUBMITTED (QUOTA REACHED)
-               All form inputs, upload area, and submit buttons hidden!
-          {isQuotaReached || (userSubmissionsCount > 0 && !isEnteringAnother) ? (
+          ) : (isQuotaReached || (userSubmissionsCount > 0 && !isEnteringAnother)) ? (
             /* ==========================================================
                SUBMITTED ENTRIES VIEW (FULL DETAILS & ANSWERS LIST)
                ========================================================== */
@@ -1098,20 +1095,30 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                   const rawTs = Number(sub.created_at || sub.timestamp || 0);
                   const subDate = rawTs > 0 ? new Date(rawTs) : new Date();
 
+                  // Check if there are valid user-answered questions (excluding internal flags)
+                  const hasAnswers = Object.entries(answersObj).some(
+                    ([k, v]) => !k.startsWith('unlocked_') && k !== 'pass_mode' && v !== undefined && v !== null && v !== ''
+                  );
+
                   return (
                     <div
                       key={sub.id || idx}
                       className="w-full p-4 rounded-3xl bg-white border border-slate-100 shadow-xs space-y-3 text-left"
                     >
                       {/* Top Row: Entry #, Date & Status */}
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                      <div className={`flex items-center justify-between ${hasAnswers ? 'border-b border-slate-100 pb-2.5' : ''}`}>
                         <div className="flex items-center gap-2">
                           <span className="w-5 h-5 rounded-full bg-zinc-900 text-white text-[10px] font-bold flex items-center justify-center">
                             {userSubmissions.length - idx}
                           </span>
                           <div>
-                            <div className="text-xs font-bold text-zinc-900 font-mono">
-                              {sub.id}
+                            <div className="text-xs font-bold text-zinc-900 font-mono flex items-center gap-1.5">
+                              <span>{sub.id}</span>
+                              {(sub.unlocked_via_passcode || answersObj.unlocked_via_passcode) && (
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 font-sans">
+                                  Passcode ✓
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-zinc-400">
                               {subDate.toLocaleDateString('en-GB')} {subDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1137,43 +1144,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         )}
                       </div>
 
-                      {/* Receipt & Purchase Summary */}
-                      <div className="flex items-start gap-3 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
-                        {sub.receipt_photo_url ? (
-                          <a
-                            href={sub.receipt_photo_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block shrink-0 relative group"
-                            title="View Full Receipt"
-                          >
-                            <img
-                              src={sub.receipt_photo_url}
-                              alt="Receipt"
-                              className="w-14 h-14 rounded-xl object-cover bg-white border border-slate-200 shadow-2xs group-hover:opacity-90 transition"
-                            />
-                            <div className="absolute inset-0 rounded-xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
-                              View
-                            </div>
-                          </a>
-                        ) : null}
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="text-[10px] uppercase font-bold text-zinc-400">
-                            Purchase Details
-                          </div>
-                          <div className="text-xs font-extrabold text-zinc-900">
-                            ${Number(sub.amount_paid || 0).toFixed(2)} • {sub.items_count || 1} item(s)
-                          </div>
-                          {(sub.unlocked_via_passcode || answersObj.unlocked_via_passcode) && (
-                            <div className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 mt-0.5">
-                              <span>Event Passcode: Unlocked ✓</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Submitted Answers */}
-                      {Object.keys(answersObj).length > 0 && (
+                      {/* Submitted Answers (Only displayed if contest questions were answered) */}
+                      {hasAnswers && (
                         <div className="space-y-1.5 pt-1">
                           <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wide">
                             Submitted Answers:
@@ -1190,15 +1162,27 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                                   <div className="text-zinc-500 font-semibold text-[11px]">
                                     {qIdx + 1}. {q.question || (q as any).label || `Question ${qIdx + 1}`}
                                   </div>
-                                  <div className="text-zinc-950 font-bold mt-0.5">
-                                    {String(ans)}
+                                  <div className="text-zinc-950 font-bold mt-0.5 break-all">
+                                    {(q.type === 'url' || String(ans).startsWith('http://') || String(ans).startsWith('https://')) ? (
+                                      <a
+                                        href={String(ans).startsWith('http') ? String(ans) : `https://${String(ans)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#0B57D0] underline hover:text-blue-800 inline-flex items-center gap-1"
+                                      >
+                                        <span>{String(ans)}</span>
+                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                      </a>
+                                    ) : (
+                                      String(ans)
+                                    )}
                                   </div>
                                 </div>
                               );
                             })}
                             {/* Fallback for any answers not mapped to extraQuestionsList */}
                             {Object.entries(answersObj)
-                              .filter(([k]) => !k.startsWith('unlocked_') && k !== 'pass_mode' && !extraQuestionsList.some((q, idx) => (q.id || `q_${idx + 1}`) === k))
+                              .filter(([k, v]) => !k.startsWith('unlocked_') && k !== 'pass_mode' && v !== undefined && v !== null && v !== '' && !extraQuestionsList.some((q, idx) => (q.id || `q_${idx + 1}`) === k))
                               .map(([k, v]) => (
                                 <div
                                   key={k}
@@ -1207,8 +1191,20 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                                   <div className="text-zinc-500 font-semibold text-[11px]">
                                     {k}
                                   </div>
-                                  <div className="text-zinc-950 font-bold mt-0.5">
-                                    {String(v)}
+                                  <div className="text-zinc-950 font-bold mt-0.5 break-all">
+                                    {(String(v).startsWith('http://') || String(v).startsWith('https://')) ? (
+                                      <a
+                                        href={String(v).startsWith('http') ? String(v) : `https://${String(v)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#0B57D0] underline hover:text-blue-800 inline-flex items-center gap-1"
+                                      >
+                                        <span>{String(v)}</span>
+                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                      </a>
+                                    ) : (
+                                      String(v)
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -1267,7 +1263,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                       Upload receipt &amp; purchase details to join
                     </p>
                   </div>
-                  {(contest.reward_points || contest.submission_limits?.points_per_submission) && (
+                  {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0 && (
                     <span className="px-2.5 py-1 rounded-full bg-[#141416] text-[#FFEA00] text-[11px] font-extrabold shadow-2xs">
                       +{contest.reward_points || contest.submission_limits?.points_per_submission} pts
                     </span>
@@ -1389,21 +1385,36 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                     />
                   </div>
                 </div>
+              </div>
 
-                {/* 3. EXTRA QUESTIONS (MAX 5, NO DEFAULT) */}
-                {extraQuestionsList.length > 0 && (
-                  <div className="space-y-3 pt-2 border-t border-slate-100">
-                    <div className="text-xs font-bold text-[#141416]">
-                      Extra Contest Questions
-                    </div>
-                    {extraQuestionsList.map((q, idx) => (
+              {/* 3. CONTEST QUESTIONS (SEPARATE CONTAINER & DIFFERENT COLOUR, NO TITLE) */}
+              {extraQuestionsList.length > 0 && (
+                <div className="w-full p-5 rounded-3xl bg-[#141416] text-white shadow-xs space-y-4 animate-in fade-in duration-200">
+                  {extraQuestionsList.map((q, idx) => {
+                    const qType = (q.type || 'text').toLowerCase();
+                    const placeholder =
+                      qType === 'number'
+                        ? 'Enter a number...'
+                        : qType === 'url'
+                        ? 'https://...'
+                        : 'Type your answer here...';
+
+                    return (
                       <div key={q.id || idx} className="space-y-1.5">
-                        <label className="block text-xs font-semibold text-zinc-700">
-                          {idx + 1}. {q.question || (q as any).label || `Question ${idx + 1}`}
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-white">
+                            {idx + 1}. {q.question || (q as any).label || `Question ${idx + 1}`}
+                          </label>
+                          {qType !== 'text' && (
+                            <span className="text-[10px] uppercase font-bold text-zinc-400 bg-white/10 px-2 py-0.5 rounded">
+                              {qType === 'url' ? 'URL' : 'Number'}
+                            </span>
+                          )}
+                        </div>
                         <input
-                          type="text"
-                          placeholder="Your answer..."
+                          type={qType === 'number' ? 'number' : qType === 'url' ? 'url' : 'text'}
+                          inputMode={qType === 'number' ? 'numeric' : qType === 'url' ? 'url' : 'text'}
+                          placeholder={placeholder}
                           value={extraAnswers[q.id || `q_${idx + 1}`] || ''}
                           onChange={(e) =>
                             setExtraAnswers((prev) => ({
@@ -1411,18 +1422,20 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                               [q.id || `q_${idx + 1}`]: e.target.value,
                             }))
                           }
-                          className="w-full h-10 px-3.5 rounded-2xl bg-[#F6F6F9] text-xs font-medium text-zinc-800 border border-zinc-200/80 outline-none focus:border-[#141416]"
+                          className="w-full h-11 px-3.5 rounded-2xl bg-white/10 text-white placeholder-zinc-500 text-xs border border-white/10 focus:border-[#FFEA00] focus:outline-none transition"
                         />
                       </div>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
+              )}
 
-                {/* Submit Button */}
+              {/* Submit & Navigation Action Buttons */}
+              <div className="space-y-2 pt-1">
                 <button
                   type="submit"
                   disabled={isUploadingReceipt}
-                  className="w-full h-12 rounded-full bg-[#EC008C] hover:bg-[#d6007e] text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] disabled:opacity-50 mt-2"
+                  className="w-full h-12 rounded-full bg-[#EC008C] hover:bg-[#d6007e] text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                 >
                   {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0
                     ? `Submit Contest Entry (+${contest.reward_points || contest.submission_limits?.points_per_submission} pts)`
