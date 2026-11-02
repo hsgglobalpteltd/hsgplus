@@ -56,6 +56,28 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({});
   const [isEnteringAnother, setIsEnteringAnother] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
+  const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
+
+  // Auto-scroll input into center view when tapped/focused to prevent keyboard covering
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    setIsKeyboardActive(true);
+    const target = e.currentTarget;
+    // Delay slightly so mobile virtual keyboard has time to open and resize viewport
+    window.setTimeout(() => {
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest',
+      });
+    }, 280);
+  };
+
+  const handleInputBlur = () => {
+    // Delay hiding keyboard spacer slightly to avoid abrupt layout jump
+    window.setTimeout(() => {
+      setIsKeyboardActive(false);
+    }, 150);
+  };
 
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -479,6 +501,22 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     if (!qty || Number(qty) < 1) {
       showToast('Please enter the quantity of items purchased.');
       return;
+    }
+
+    // Validate all extra contest questions are answered (all are mandatory, without badge/tick)
+    for (let i = 0; i < extraQuestionsList.length; i++) {
+      const q = extraQuestionsList[i];
+      const key = q.id || `q_${i + 1}`;
+      const val = (extraAnswers[key] || '').trim();
+      const qTitle = q.question || (q as any).label || `Question #${i + 1}`;
+      if (!val) {
+        showToast(`Please answer #${i + 1}: ${qTitle}`);
+        return;
+      }
+      if (q.type === 'number' && isNaN(Number(val))) {
+        showToast(`Please enter a valid number for #${i + 1}`);
+        return;
+      }
     }
 
     // Submit contest entry
@@ -1360,6 +1398,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         min="0"
                         placeholder="0.00"
                         value={totalAmount}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
                         onChange={(e) =>
                           setTotalAmount(e.target.value === '' ? '' : Number(e.target.value))
                         }
@@ -1378,6 +1418,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                       min="1"
                       placeholder="1"
                       value={qty}
+                      onFocus={handleInputFocus}
+                      onBlur={handleInputBlur}
                       onChange={(e) =>
                         setQty(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10)))
                       }
@@ -1414,8 +1456,11 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         <input
                           type={qType === 'number' ? 'number' : qType === 'url' ? 'url' : 'text'}
                           inputMode={qType === 'number' ? 'numeric' : qType === 'url' ? 'url' : 'text'}
+                          required
                           placeholder={placeholder}
                           value={extraAnswers[q.id || `q_${idx + 1}`] || ''}
+                          onFocus={handleInputFocus}
+                          onBlur={handleInputBlur}
                           onChange={(e) =>
                             setExtraAnswers((prev) => ({
                               ...prev,
@@ -1452,6 +1497,13 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                   </button>
                 )}
               </div>
+
+              {/* Dynamic Virtual Keyboard Spacer Cushion (Prevents keyboard from covering input) */}
+              <div
+                className={`transition-all duration-300 pointer-events-none ${
+                  isKeyboardActive ? 'h-72' : 'h-2'
+                }`}
+              />
             </form>
           )}
         </div>
