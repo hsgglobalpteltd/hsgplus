@@ -302,7 +302,9 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   // Submission count calculations
   const totalSubmissionsCount = React.useMemo(() => {
     if (!contest) return 0;
-    return (db.contest_submissions || []).filter((s) => s.contest_id === contest.id).length;
+    return (db.contest_submissions || []).filter(
+      (s) => String(s.contest_id || '').toLowerCase() === String(contest.id || '').toLowerCase()
+    ).length;
   }, [contest, db.contest_submissions]);
 
   const userSubmissions = React.useMemo(() => {
@@ -311,15 +313,23 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       db.user?.id ||
       (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') ||
       '';
-    if (!uid) return [];
+    const phone =
+      (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_phone') : '') ||
+      db.user?.phone_number ||
+      '';
+    const cleanPhone = phone.replace(/\D/g, '');
 
-    return (db.contest_submissions || []).filter(
-      (s) => s.contest_id === contest.id && s.user_id === uid
-    );
-  }, [contest, db.contest_submissions, db.user?.id]);
+    return (db.contest_submissions || []).filter((s) => {
+      const matchContest = String(s.contest_id || '').toLowerCase() === String(contest.id || '').toLowerCase();
+      if (!matchContest) return false;
+      if (uid && s.user_id === uid) return true;
+      if (cleanPhone && s.user_phone && s.user_phone.replace(/\D/g, '') === cleanPhone) return true;
+      return false;
+    });
+  }, [contest, db.contest_submissions, db.user?.id, db.user?.phone_number]);
 
   const userSubmissionsCount = userSubmissions.length;
-  const hasApprovedEntry = userSubmissions.some((s) => s.status === 'approved');
+  const hasApprovedEntry = userSubmissions.some((s) => s.status === 'approved' || s.status === 'winner');
 
   const maxPerUser = Number(contest?.max_per_user ?? contest?.submission_limits?.max_per_user ?? 0);
   const isQuotaReached = maxPerUser > 0 && userSubmissionsCount >= maxPerUser;
@@ -348,6 +358,9 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     if (Array.isArray(contest.extra_questions) && contest.extra_questions.length > 0) {
       return contest.extra_questions.slice(0, 5);
     }
+    if (Array.isArray(contest.submission_questions) && contest.submission_questions.length > 0) {
+      return contest.submission_questions.slice(0, 5);
+    }
     return [];
   }, [contest]);
 
@@ -363,7 +376,9 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   // Winners for this contest (only visible once announced)
   const contestWinners = React.useMemo(() => {
     if (!contest || !isWinnersAnnounced) return [];
-    return (db.contest_winners || []).filter((w) => w.contest_id === contest.id);
+    return (db.contest_winners || []).filter(
+      (w) => String(w.contest_id || '').toLowerCase() === String(contest.id || '').toLowerCase()
+    );
   }, [contest, db.contest_winners, isWinnersAnnounced]);
 
   // Current user's winning prizes for this contest (only visible once announced)
@@ -375,7 +390,10 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       '';
     if (!uid) return [];
     return (db.contest_winners || []).filter((w) => {
-      return w.contest_id === contest.id && w.user_id === uid;
+      return (
+        String(w.contest_id || '').toLowerCase() === String(contest.id || '').toLowerCase() &&
+        w.user_id === uid
+      );
     });
   }, [contest, db.contest_winners, db.user?.id, isWinnersAnnounced]);
 
@@ -1004,77 +1022,203 @@ export const ContestPage: React.FC<ContestPageProps> = ({
             /* ==========================================================
                ALL ALLOWED ENTRIES SUBMITTED (QUOTA REACHED)
                All form inputs, upload area, and submit buttons hidden!
-               ========================================================== */
-            <div className="w-full p-6 rounded-3xl bg-white shadow-xs text-center space-y-4 animate-in fade-in duration-300">
-              <div className="w-14 h-14 rounded-full bg-[#141416] text-[#FFEA00] flex items-center justify-center mx-auto shadow-sm">
-                <Trophy className="w-7 h-7" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-base font-extrabold text-[#141416]">
-                  Entry Submitted!
-                </h3>
-                <div
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold ${
-                    hasApprovedEntry
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      : 'bg-amber-50 text-amber-800 border-amber-200/80'
-                  }`}
-                >
-                  {hasApprovedEntry ? (
-                    <>
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Entry Approved • Waiting for Announcement ⏳</span>
-                    </>
-                  ) : (
-                    <>
-                      <Clock className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Entry is pending review</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-zinc-900">
-                  You have submitted {userSubmissionsCount} {userSubmissionsCount === 1 ? 'entry' : 'entries'} for this contest.
-                </p>
-                <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                  Stay tuned and wait for winners to be announced! Good luck!
-                </p>
-              </div>
-            </div>
-          ) : userSubmissionsCount > 0 && !isEnteringAnother ? (
+          {isQuotaReached || (userSubmissionsCount > 0 && !isEnteringAnother) ? (
             /* ==========================================================
-               ENTRY SUBMITTED VIEW (QUOTA REMAINING)
-               Clean status view with option to submit another entry!
+               SUBMITTED ENTRIES VIEW (FULL DETAILS & ANSWERS LIST)
                ========================================================== */
-            <div className="w-full p-6 rounded-3xl bg-white shadow-xs text-center space-y-4 animate-in fade-in duration-300">
-              <div className="w-14 h-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
-                <CheckCircle2 className="w-7 h-7" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-base font-extrabold text-[#141416]">
-                  Entry Submitted!
-                </h3>
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80 text-[11px] font-bold">
-                  <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Entry is pending review</span>
+            <div className="w-full space-y-4 animate-in fade-in duration-300">
+              {/* Summary Card */}
+              <div className="w-full p-6 rounded-3xl bg-white shadow-xs text-center space-y-3.5">
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto shadow-xs ${
+                  isQuotaReached
+                    ? 'bg-[#141416] text-[#FFEA00]'
+                    : 'bg-emerald-50 border border-emerald-200 text-emerald-600'
+                }`}>
+                  {isQuotaReached ? <Trophy className="w-7 h-7" /> : <CheckCircle2 className="w-7 h-7" />}
                 </div>
+
+                <div className="space-y-1">
+                  <h3 className="text-base font-extrabold text-[#141416]">
+                    {userSubmissionsCount === 1 ? 'Contest Entry Submitted!' : `${userSubmissionsCount} Entries Submitted!`}
+                  </h3>
+                  <div
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold ${
+                      hasApprovedEntry
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200/80'
+                    }`}
+                  >
+                    {hasApprovedEntry ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Entry Approved • Awaiting Announcement ⏳</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Entry is pending review</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-zinc-900">
+                    You have submitted {userSubmissionsCount} {userSubmissionsCount === 1 ? 'entry' : 'entries'} for this contest.
+                  </p>
+                  <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                    {isQuotaReached
+                      ? `Maximum quota reached (${maxPerUser}/${maxPerUser}). Stay tuned for winners announcement!`
+                      : 'You can submit additional entries with separate purchase receipts to increase your winning chances.'}
+                  </p>
+                </div>
+
+                {!isQuotaReached && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEnteringAnother(true)}
+                    className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-[#FFEA00] font-extrabold text-xs shadow-md active:scale-[0.99] transition flex items-center justify-center gap-2 cursor-pointer mt-1"
+                  >
+                    <span>+ Submit Another Entry</span>
+                  </button>
+                )}
               </div>
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-zinc-900">
-                  You have submitted {userSubmissionsCount} {userSubmissionsCount === 1 ? 'entry' : 'entries'} for this contest.
-                </p>
-                <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                  The more entries you submit, the more chances you have to win!
-                </p>
+
+              {/* Submitted Entries List */}
+              <div className="space-y-3">
+                <div className="text-xs font-extrabold text-zinc-900 px-1 flex items-center justify-between">
+                  <span>Your Submitted {userSubmissionsCount === 1 ? 'Entry' : 'Entries'}</span>
+                  <span className="text-[11px] text-zinc-500 font-semibold">{userSubmissionsCount} total</span>
+                </div>
+
+                {userSubmissions.map((sub, idx) => {
+                  const isApproved = sub.status === 'approved' || sub.status === 'winner';
+                  const isRejected = sub.status === 'rejected';
+                  const answersObj = (sub.extra_answers || sub.answers_json || sub.answer_json || {}) as Record<string, any>;
+                  const rawTs = Number(sub.created_at || sub.timestamp || 0);
+                  const subDate = rawTs > 0 ? new Date(rawTs) : new Date();
+
+                  return (
+                    <div
+                      key={sub.id || idx}
+                      className="w-full p-4 rounded-3xl bg-white border border-slate-100 shadow-xs space-y-3 text-left"
+                    >
+                      {/* Top Row: Entry #, Date & Status */}
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-zinc-900 text-white text-[10px] font-bold flex items-center justify-center">
+                            {userSubmissions.length - idx}
+                          </span>
+                          <div>
+                            <div className="text-xs font-bold text-zinc-900 font-mono">
+                              {sub.id}
+                            </div>
+                            <div className="text-[10px] text-zinc-400">
+                              {subDate.toLocaleDateString('en-GB')} {subDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Pill */}
+                        {isApproved ? (
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>Approved</span>
+                          </div>
+                        ) : isRejected ? (
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold">
+                            <span>Declined</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-bold">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            <span>Pending Review</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Receipt & Purchase Summary */}
+                      <div className="flex items-start gap-3 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
+                        {sub.receipt_photo_url ? (
+                          <a
+                            href={sub.receipt_photo_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block shrink-0 relative group"
+                            title="View Full Receipt"
+                          >
+                            <img
+                              src={sub.receipt_photo_url}
+                              alt="Receipt"
+                              className="w-14 h-14 rounded-xl object-cover bg-white border border-slate-200 shadow-2xs group-hover:opacity-90 transition"
+                            />
+                            <div className="absolute inset-0 rounded-xl bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
+                              View
+                            </div>
+                          </a>
+                        ) : null}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="text-[10px] uppercase font-bold text-zinc-400">
+                            Purchase Details
+                          </div>
+                          <div className="text-xs font-extrabold text-zinc-900">
+                            ${Number(sub.amount_paid || 0).toFixed(2)} • {sub.items_count || 1} item(s)
+                          </div>
+                          {(sub.unlocked_via_passcode || answersObj.unlocked_via_passcode) && (
+                            <div className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 mt-0.5">
+                              <span>Event Passcode: Unlocked ✓</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Submitted Answers */}
+                      {Object.keys(answersObj).length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wide">
+                            Submitted Answers:
+                          </div>
+                          <div className="space-y-1.5">
+                            {extraQuestionsList.map((q, qIdx) => {
+                              const ans = answersObj[q.id || `q_${qIdx + 1}`];
+                              if (ans === undefined || ans === null || ans === '') return null;
+                              return (
+                                <div
+                                  key={q.id || qIdx}
+                                  className="text-xs bg-slate-50/80 p-2.5 rounded-xl border border-slate-100"
+                                >
+                                  <div className="text-zinc-500 font-semibold text-[11px]">
+                                    {qIdx + 1}. {q.question || (q as any).label || `Question ${qIdx + 1}`}
+                                  </div>
+                                  <div className="text-zinc-950 font-bold mt-0.5">
+                                    {String(ans)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {/* Fallback for any answers not mapped to extraQuestionsList */}
+                            {Object.entries(answersObj)
+                              .filter(([k]) => !k.startsWith('unlocked_') && k !== 'pass_mode' && !extraQuestionsList.some((q, idx) => (q.id || `q_${idx + 1}`) === k))
+                              .map(([k, v]) => (
+                                <div
+                                  key={k}
+                                  className="text-xs bg-slate-50/80 p-2.5 rounded-xl border border-slate-100"
+                                >
+                                  <div className="text-zinc-500 font-semibold text-[11px]">
+                                    {k}
+                                  </div>
+                                  <div className="text-zinc-950 font-bold mt-0.5">
+                                    {String(v)}
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <button
-                type="button"
-                onClick={() => setIsEnteringAnother(true)}
-                className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-[#FFEA00] font-extrabold text-xs shadow-md active:scale-[0.99] transition flex items-center justify-center gap-2 cursor-pointer mt-1"
-              >
-                <span>+ Submit Another Entry</span>
-              </button>
             </div>
           ) : (
             /* ==========================================================
@@ -1255,7 +1399,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                     {extraQuestionsList.map((q, idx) => (
                       <div key={q.id || idx} className="space-y-1.5">
                         <label className="block text-xs font-semibold text-zinc-700">
-                          {idx + 1}. {q.question}
+                          {idx + 1}. {q.question || (q as any).label || `Question ${idx + 1}`}
                         </label>
                         <input
                           type="text"

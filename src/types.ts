@@ -345,15 +345,18 @@ export interface ContestWinnerRecord {
 
 export interface ContestQuestionItem {
   id: string;
-  label: string;
-  type:
+  label?: string;
+  question?: string;
+  type?:
     | 'text'
     | 'photo_upload'
     | 'radio_select'
     | 'multi_select'
     | 'range_number'
     | 'scale'
-    | 'number';
+    | 'number'
+    | 'radio'
+    | string;
   options?: string[];
   required?: boolean;
   placeholder?: string;
@@ -438,6 +441,8 @@ export interface ContestSubmissionRecord {
     awarded_at?: number;
   };
   prize_awarded?: string;
+  unlocked_via_passcode?: boolean;
+  pass_mode?: string;
   created_at?: number;
   timestamp?: number;
 }

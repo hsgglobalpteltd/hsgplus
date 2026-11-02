@@ -206,7 +206,28 @@ export function clearPendingReferralCode(): void {
 }
 
 /**
- * Universal Wipe for Member Data:
+ * Cookie Bridge helpers for Safari / iOS persistence
+ */
+export function getAuthCookie(name: string): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(new RegExp('(^|;\\s*)' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[2]) : '';
+}
+
+export function setAuthCookie(name: string, value: string, days = 365): void {
+  if (typeof document === 'undefined') return;
+  const d = new Date();
+  d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${encodeURIComponent(value)};expires=${d.toUTCString()};path=/;SameSite=Lax`;
+}
+
+export function deleteAuthCookie(name: string): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`;
+}
+
+/**
+ * Universally purges all user-specific state on member logout or account switch.
  * Clears ALL user-specific localStorage and sessionStorage keys in one go,
  * strictly preserving app theme customization and marketing referral attribution.
  */
@@ -222,6 +243,11 @@ export function purgeUserStorage(): void {
   };
 
   try {
+    deleteAuthCookie('hsg_auth_phone');
+    deleteAuthCookie('hsg_auth_user_id');
+    deleteAuthCookie('hsg_auth_name');
+    deleteAuthCookie('hsg_auth_paynow');
+
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -328,7 +354,8 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
               ...s,
               contest_title: s.contest_title || s.contest_id || 'Contest',
               photo_name: s.photo_name || '',
-              answers_json: s.answer_json || s.answers_json || {},
+              answers_json: s.answer_json || s.answers_json || s.extra_answers || {},
+              extra_answers: s.extra_answers || s.answer_json || {},
               timestamp: Number(s.created_at || s.timestamp || Date.now()),
             }))
           : [];
@@ -542,8 +569,10 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      const authPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || '') : '';
-      const authUserId = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_user_id') || '') : '';
+      const cookieUid = getAuthCookie('hsg_auth_user_id');
+      const cookiePhone = getAuthCookie('hsg_auth_phone');
+      const authPhone = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_phone') || cookiePhone || '') : '';
+      const authUserId = typeof window !== 'undefined' ? (localStorage.getItem('hsg_auth_user_id') || cookieUid || '') : '';
       if (authUserId || authPhone) {
         const qParam = authUserId
           ? `user_id=${encodeURIComponent(authUserId)}${authPhone ? `&phone=${encodeURIComponent(authPhone)}` : ''}`
@@ -556,15 +585,24 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           const uData = await uRes.json();
           if (uData.user) {
             if (uData.user.id) {
-              try { localStorage.setItem('hsg_auth_user_id', uData.user.id); } catch {}
+              try {
+                localStorage.setItem('hsg_auth_user_id', uData.user.id);
+                setAuthCookie('hsg_auth_user_id', uData.user.id, 365);
+              } catch {}
             }
             if (uData.user.nickname) {
-              try { localStorage.setItem('hsg_auth_name', uData.user.nickname); } catch {}
+              try {
+                localStorage.setItem('hsg_auth_name', uData.user.nickname);
+                setAuthCookie('hsg_auth_name', uData.user.nickname, 365);
+              } catch {}
             }
             if (uData.user?.paynow || uData.user?.paynow_number) {
               try {
                 const pn = uData.user.paynow || uData.user.paynow_number;
-                if (pn && !pn.startsWith('...')) localStorage.setItem('hsg_auth_paynow', pn);
+                if (pn && !pn.startsWith('...')) {
+                  localStorage.setItem('hsg_auth_paynow', pn);
+                  setAuthCookie('hsg_auth_paynow', pn, 365);
+                }
               } catch {}
             }
             setDb((prev) => ({
@@ -589,13 +627,18 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                     : Number(uData.user.pending_points || 0),
               },
             }));
-          } else {
-            // Live user record no longer exists in database -> purge session
+            setIsAuthenticated(true);
+          } else if (uData.is_blocked || (uData.error && uData.error.includes('blocked'))) {
+            // Only explicitly de-authorize if member is blocked
             try {
               localStorage.removeItem('hsg_auth_phone');
               localStorage.removeItem('hsg_auth_user_id');
               localStorage.removeItem('hsg_auth_name');
               localStorage.removeItem('hsg_auth_paynow');
+              deleteAuthCookie('hsg_auth_phone');
+              deleteAuthCookie('hsg_auth_user_id');
+              deleteAuthCookie('hsg_auth_name');
+              deleteAuthCookie('hsg_auth_paynow');
             } catch {}
             setDb((prev) => ({ ...prev, user: null }));
             setIsAuthenticated(false);
@@ -767,8 +810,25 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
+      // Safari / iOS Storage Bridge: Restore from 1-year cookie if localStorage was partitioned/cleared
+      if (typeof window !== 'undefined') {
+        const cUid = getAuthCookie('hsg_auth_user_id');
+        const cPhone = getAuthCookie('hsg_auth_phone');
+        const cName = getAuthCookie('hsg_auth_name');
+        if (cUid && !localStorage.getItem('hsg_auth_user_id')) {
+          localStorage.setItem('hsg_auth_user_id', cUid);
+        }
+        if (cPhone && !localStorage.getItem('hsg_auth_phone')) {
+          localStorage.setItem('hsg_auth_phone', cPhone);
+        }
+        if (cName && !localStorage.getItem('hsg_auth_name')) {
+          localStorage.setItem('hsg_auth_name', cName);
+        }
+      }
+
       const EPOCH_KEY = 'hsg_auth_epoch_v5';
-      if (localStorage.getItem(EPOCH_KEY) !== 'reset_zero_20261025') {
+      const storedEpoch = typeof window !== 'undefined' ? localStorage.getItem(EPOCH_KEY) : null;
+      if (storedEpoch && storedEpoch !== 'reset_zero_20261025') {
         const keysToRemove: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
@@ -781,10 +841,20 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         localStorage.removeItem('hsg_auth_user_id');
         localStorage.removeItem('hsg_auth_name');
         localStorage.removeItem('hsg_auth_paynow');
+        deleteAuthCookie('hsg_auth_phone');
+        deleteAuthCookie('hsg_auth_user_id');
+        deleteAuthCookie('hsg_auth_name');
+        deleteAuthCookie('hsg_auth_paynow');
         localStorage.setItem(EPOCH_KEY, 'reset_zero_20261025');
         return false;
       }
-      return Boolean((localStorage.getItem('hsg_auth_phone') ));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(EPOCH_KEY, 'reset_zero_20261025');
+      }
+
+      const uid = (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || getAuthCookie('hsg_auth_user_id');
+      const phone = (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_phone') : '') || getAuthCookie('hsg_auth_phone');
+      return Boolean(uid || phone);
     } catch {
       return false;
     }
@@ -887,12 +957,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       if (cleanPhone && cleanPhone.length >= 8) {
         localStorage.setItem('hsg_auth_phone', cleanPhone);
+        setAuthCookie('hsg_auth_phone', cleanPhone, 365);
       }
       localStorage.setItem('hsg_auth_name', userRecord.nickname);
+      setAuthCookie('hsg_auth_name', userRecord.nickname, 365);
       if (userRecord.id) {
         localStorage.setItem('hsg_auth_user_id', userRecord.id);
+        setAuthCookie('hsg_auth_user_id', userRecord.id, 365);
       } else {
         localStorage.removeItem('hsg_auth_user_id');
+        deleteAuthCookie('hsg_auth_user_id');
       }
     } catch (e) {}
 
@@ -913,7 +987,10 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       if (syncRes.ok) {
         const sData = await syncRes.json();
         if (sData.user) {
-          if (sData.user.id) localStorage.setItem('hsg_auth_user_id', sData.user.id);
+          if (sData.user.id) {
+            localStorage.setItem('hsg_auth_user_id', sData.user.id);
+            setAuthCookie('hsg_auth_user_id', sData.user.id, 365);
+          }
           setDb((prev) => ({ ...prev, user: sData.user }));
         }
       }
@@ -2187,7 +2264,9 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     const targetContest =
-      db.contests.find((c) => c.id === contestId) || db.contests[0];
+      db.contests.find((c) => c.id.toLowerCase() === String(contestId || '').toLowerCase()) ||
+      db.contests.find((c) => c.id === contestId) ||
+      db.contests[0];
     const ptsEarned = Number(
       targetContest?.reward_points ??
         targetContest?.submission_limits?.points_per_submission ??
@@ -2234,11 +2313,40 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           answer_json: answers,
         }),
       })
-        .then(() => {
+        .then(async (res) => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            showToast(errData.error || 'Failed to submit contest entry');
+            return;
+          }
           syncLiveCashback();
           syncLiveUsers();
+          // Immediately sync contest submissions from server
+          try {
+            const ctRes = await fetch(`${LIVE_WORKER_URL}/api/hsg-app/contests`);
+            if (ctRes.ok) {
+              const ctData = await ctRes.json();
+              if (ctData && Array.isArray(ctData.submissions)) {
+                setDb((prev) => ({
+                  ...prev,
+                  contest_submissions: ctData.submissions.map((s: any) => ({
+                    ...s,
+                    contest_title: s.contest_title || s.contest_id || 'Contest',
+                    photo_name: s.photo_name || '',
+                    answers_json: s.answer_json || s.answers_json || s.extra_answers || {},
+                    extra_answers: s.extra_answers || s.answer_json || {},
+                    timestamp: Number(s.created_at || s.timestamp || Date.now()),
+                  })),
+                  ...(Array.isArray(ctData.winners) ? { contest_winners: ctData.winners } : {}),
+                }));
+              }
+            }
+          } catch {}
         })
-        .catch((err) => console.warn('[LiveContest] Submit error:', err));
+        .catch((err) => {
+          console.warn('[LiveContest] Submit error:', err);
+          showToast('Network error submitting contest entry');
+        });
 
       setDb((prev) => ({
         ...prev,
