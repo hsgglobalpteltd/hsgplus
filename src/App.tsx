@@ -419,8 +419,8 @@ const HsgMobileShell: React.FC = () => {
 
   const currentUrl =
     typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://hsgplus.community';
+      ? window.location.href
+      : 'https://plus.hsgglobal.sg';
 
   // DESKTOP QR BLOCKER FOR MOBILE APP (STRICT MOBILE ONLY)
   if (isDesktopViewport) {

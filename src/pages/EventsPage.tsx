@@ -182,7 +182,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
     const start = ev.date_timestamp;
     const durationHours = Number(ev.duration_hours) || 4;
     const end = start + durationHours * 3600000;
-    const checkInOpen = start - 2 * 3600000; // 2 hours early
+    const checkInOpen = start - 30 * 60 * 1000; // 30 mins early
     return { start, end, checkInOpen, durationHours };
   };
 

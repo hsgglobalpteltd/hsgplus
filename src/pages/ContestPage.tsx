@@ -5,11 +5,16 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Gift,
+  Key,
+  Lock,
   Loader2,
   RefreshCw,
   Trophy,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { compressImageFile } from '../lib/imageCompressor';
@@ -31,10 +36,12 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 }) => {
   const { db, submitContestEntry, showToast } = useHsgData();
 
-  // Selected contest
   const [selectedContestId, setSelectedContestId] = useState<string>(
     initialContestId || db.contests[0]?.id || ''
   );
+
+  // Accordion state for About This Contest vs How To Participate (defaults to 'about')
+  const [activeInfoTab, setActiveInfoTab] = useState<'about' | 'instruction' | null>('about');
 
   // Form States (100% same like cashback campaign)
   const [receiptFileName, setReceiptFileName] = useState<string>('');
@@ -86,6 +93,130 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     if (!hasRequiredEvent) return true;
     return linkedEvent?.user_status === 'checked_in';
   }, [hasRequiredEvent, linkedEvent]);
+
+  // Check if required event has ended / registration or check-in closed
+  const isEventEnded = React.useMemo(() => {
+    if (!linkedEvent) return false;
+    const start = Number(linkedEvent.date_timestamp || 0);
+    const durationHours = Number(linkedEvent.duration_hours) || 4;
+    const end = start + durationHours * 3600000;
+    return Date.now() > end;
+  }, [linkedEvent]);
+
+  // 5-Digit Passcode Unlock State (Persisted per contest & user)
+  const unlockStorageKey = React.useMemo(() => {
+    const userKey = db.user?.phone || db.user?.id || 'guest';
+    return `hsg_contest_passcode_unlocked_${contest?.id || ''}_${userKey}`;
+  }, [contest?.id, db.user?.phone, db.user?.id]);
+
+  const [isUnlockedViaPasscode, setIsUnlockedViaPasscode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const userKey = db.user?.phone || db.user?.id || 'guest';
+    const key = `hsg_contest_passcode_unlocked_${initialContestId || ''}_${userKey}`;
+    return localStorage.getItem(key) === 'true';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && unlockStorageKey) {
+      setIsUnlockedViaPasscode(localStorage.getItem(unlockStorageKey) === 'true');
+    }
+  }, [unlockStorageKey]);
+
+  // Passcode Modal & Anti-Brute Force (3 Tries -> 5-min cooldown)
+  const [showPasscodeModal, setShowPasscodeModal] = useState<boolean>(false);
+  const [passcodeInput, setPasscodeInput] = useState<string>('');
+  const [passcodeError, setPasscodeError] = useState<string>('');
+
+  const attemptsKey = React.useMemo(() => {
+    const uKey = db.user?.phone || db.user?.id || 'guest';
+    return `hsg_contest_passcode_attempts_${contest?.id || ''}_${uKey}`;
+  }, [contest?.id, db.user?.phone, db.user?.id]);
+
+  const cooldownKey = React.useMemo(() => {
+    const uKey = db.user?.phone || db.user?.id || 'guest';
+    return `hsg_contest_passcode_cooldown_${contest?.id || ''}_${uKey}`;
+  }, [contest?.id, db.user?.phone, db.user?.id]);
+
+  const [failedAttempts, setFailedAttempts] = useState<number>(0);
+  const [cooldownRemainingSecs, setCooldownRemainingSecs] = useState<number>(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const cdUntil = Number(localStorage.getItem(cooldownKey) || 0);
+    const now = Date.now();
+    if (cdUntil > now) {
+      setCooldownRemainingSecs(Math.ceil((cdUntil - now) / 1000));
+    } else {
+      setCooldownRemainingSecs(0);
+      const att = Number(localStorage.getItem(attemptsKey) || 0);
+      setFailedAttempts(att);
+    }
+  }, [attemptsKey, cooldownKey]);
+
+  useEffect(() => {
+    if (cooldownRemainingSecs <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownRemainingSecs((prev) => {
+        if (prev <= 1) {
+          localStorage.removeItem(cooldownKey);
+          localStorage.setItem(attemptsKey, '0');
+          setFailedAttempts(0);
+          setPasscodeError('');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownRemainingSecs, cooldownKey, attemptsKey]);
+
+  const handleVerifyPasscode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cooldownRemainingSecs > 0) return;
+
+    const trimmed = passcodeInput.trim();
+    if (!trimmed || trimmed.length !== 5) {
+      setPasscodeError('Please enter a 5-digit passcode.');
+      return;
+    }
+
+    const expectedPasscode = (contest?.event_passcode || '').trim();
+    if (!expectedPasscode) {
+      setPasscodeError('No passcode configured for this contest. Please contact support.');
+      return;
+    }
+
+    if (trimmed === expectedPasscode) {
+      setIsUnlockedViaPasscode(true);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(unlockStorageKey, 'true');
+        localStorage.removeItem(attemptsKey);
+        localStorage.removeItem(cooldownKey);
+      }
+      setFailedAttempts(0);
+      setPasscodeError('');
+      setPasscodeInput('');
+      setShowPasscodeModal(false);
+      showToast('Passcode verified! Contest unlocked.');
+    } else {
+      const next = failedAttempts + 1;
+      setFailedAttempts(next);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(attemptsKey, String(next));
+      }
+      if (next >= 3) {
+        const cdUntil = Date.now() + 5 * 60 * 1000;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(cooldownKey, String(cdUntil));
+        }
+        setCooldownRemainingSecs(300);
+        setPasscodeError('Too many failed attempts. Locked for 5 minutes.');
+      } else {
+        const remaining = 3 - next;
+        setPasscodeError(`Incorrect passcode. ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} remaining.`);
+      }
+    }
+  };
 
   // Dynamic Prize Reward Label (Cash Credit, Point, Product or any combo)
   const getRewardLabel = (p: {
@@ -332,11 +463,19 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     }
 
     // Submit contest entry
-    submitContestEntry(extraAnswers, receiptFileName, contest.id, {
-      receipt_photo_url: receiptPhotoUrl || receiptPreviewUrl,
-      amount_paid: Number(totalAmount),
-      items_count: Number(qty),
-    });
+    submitContestEntry(
+      {
+        ...extraAnswers,
+        ...(isUnlockedViaPasscode ? { unlocked_via_passcode: 'true', pass_mode: '5_digit_event_passcode' } : {}),
+      },
+      receiptFileName,
+      contest.id,
+      {
+        receipt_photo_url: receiptPhotoUrl || receiptPreviewUrl,
+        amount_paid: Number(totalAmount),
+        items_count: Number(qty),
+      }
+    );
 
     setIsSending(true);
   };
@@ -370,29 +509,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
         )}
       </div>
 
-      {/* Switch between active contests if multiple */}
-      {db.contests.length > 1 && (
-        <div className="w-full flex gap-2 overflow-x-auto no-scrollbar pt-2 pb-1">
-          {db.contests.map((c) => {
-            const active = c.id === contest?.id;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelectedContestId(c.id)}
-                className={`px-4 py-2.5 rounded-2xl text-left transition shadow-2xs shrink-0 ${
-                  active ? 'bg-[#141416] text-white' : 'bg-white text-[#141416]'
-                }`}
-              >
-                <div className="text-xs font-extrabold truncate max-w-[180px]">
-                  {c.frontpage_title || c.frontpage_config?.title || c.title}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {contest ? (
         <div className="w-full space-y-4 mt-1.5">
           {/* Header Block: Edge-to-Edge Posters (Zero Gap between posters, with breathing room to description) */}
@@ -412,27 +528,57 @@ export const ContestPage: React.FC<ContestPageProps> = ({
             )}
           </div>
 
-          {/* 3. INSIDE DESCRIPTION & INSTRUCTION */}
+          {/* 3. INSIDE DESCRIPTION & INSTRUCTION (ACCORDION COLLAPSIBLE) */}
           {(contest.inside_description || contest.inside_instruction) && (
             <div className="w-full p-4 rounded-3xl bg-white shadow-xs space-y-3">
               {contest.inside_description && (
                 <div>
-                  <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wide">
-                    About This Contest
-                  </h3>
-                  <p className="text-xs text-zinc-600 mt-1 whitespace-pre-line leading-relaxed">
-                    {contest.inside_description}
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveInfoTab((prev) => (prev === 'about' ? null : 'about'))
+                    }
+                    className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+                  >
+                    <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wide">
+                      About This Contest
+                    </h3>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${
+                        activeInfoTab === 'about' ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {activeInfoTab === 'about' && (
+                    <p className="text-xs text-zinc-600 mt-1 whitespace-pre-line leading-relaxed animate-in fade-in duration-150">
+                      {contest.inside_description}
+                    </p>
+                  )}
                 </div>
               )}
               {contest.inside_instruction && (
-                <div className="pt-2 border-t border-slate-100">
-                  <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wide">
-                    How To Participate
-                  </h3>
-                  <p className="text-xs text-zinc-600 mt-1 whitespace-pre-line leading-relaxed">
-                    {contest.inside_instruction}
-                  </p>
+                <div className={contest.inside_description ? 'pt-2 border-t border-slate-100' : ''}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveInfoTab((prev) => (prev === 'instruction' ? null : 'instruction'))
+                    }
+                    className="w-full flex items-center justify-between text-left cursor-pointer select-none"
+                  >
+                    <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wide">
+                      How To Participate
+                    </h3>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${
+                        activeInfoTab === 'instruction' ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {activeInfoTab === 'instruction' && (
+                    <p className="text-xs text-zinc-600 mt-1 whitespace-pre-line leading-relaxed animate-in fade-in duration-150">
+                      {contest.inside_instruction}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -632,87 +778,133 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                 </div>
               )}
             </div>
-          ) : cd?.isUpcoming ? (
-            /* ==========================================================
-               UPCOMING CONTEST NOT OPEN YET
-               ========================================================== */
-            <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-3 text-center animate-in fade-in duration-300">
-              <div className="w-14 h-14 rounded-full bg-blue-50 text-[#0B57D0] flex items-center justify-center mx-auto">
-                <Clock className="w-7 h-7" />
-              </div>
-              <div>
-                <h2 className="text-base font-extrabold text-zinc-950">
-                  Contest Starts Soon ⏳
-                </h2>
-                <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                  Submissions have not opened yet. Please check back when the countdown timer reaches zero!
-                </p>
-              </div>
-            </div>
-          ) : hasRequiredEvent && !isEventJoined ? (
-            /* ==========================================================
-               STATE 1: USER HAS NOT JOINED EVENT YET
-               ========================================================== */
-            <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-4 text-center animate-in fade-in duration-300">
-              <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
-                <Calendar className="w-7 h-7" />
-              </div>
-
-              <div>
-                <h2 className="text-base font-extrabold text-zinc-950">
-                  Required to Join This Event
-                </h2>
-                <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                  You must join our partner event to participate in this contest.
-                </p>
-              </div>
-
-              {contest.requirement_note && (
-                <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left">
-                  <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wide">
-                    Contest Requirement
-                  </div>
-                  <div className="text-xs text-amber-950 font-medium mt-0.5 whitespace-pre-line leading-relaxed">
-                    {contest.requirement_note}
-                  </div>
+          ) : hasRequiredEvent && !isEventJoined && !isUnlockedViaPasscode ? (
+            isEventEnded ? (
+              /* ==========================================================
+                 STATE 1B: EVENT HAS ENDED (MISSED EVENT) -> 5-DIGIT PASSCODE UNLOCK
+                 ========================================================== */
+              <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-4 text-center animate-in fade-in duration-300">
+                <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+                  <Key className="w-7 h-7" />
                 </div>
-              )}
 
-              {linkedEvent && (
-                <div className="p-3.5 rounded-2xl bg-[#F6F6F9] border border-slate-200 flex items-center justify-between gap-3 text-left">
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-bold uppercase text-[#EC008C] tracking-wide">
-                      Required Event
-                    </span>
-                    <h4 className="text-xs font-extrabold text-[#141416] truncate">
-                      {linkedEvent.title}
-                    </h4>
-                    <p className="text-[11px] text-zinc-500 mt-0.5 truncate">
-                      {linkedEvent.location} • Status:{' '}
-                      <span className="font-bold text-amber-600">
-                        Not Joined Yet
+                <div>
+                  <h2 className="text-base font-extrabold text-zinc-950">
+                    Missed the Event? ⏳
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                    Oh, sorry you missed the event! But you can still participate in this contest by entering your 5-digit Event Passcode.
+                  </p>
+                </div>
+
+                {contest.requirement_note && (
+                  <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left">
+                    <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wide">
+                      Contest Requirement
+                    </div>
+                    <div className="text-xs text-amber-950 font-medium mt-0.5 whitespace-pre-line leading-relaxed">
+                      {contest.requirement_note}
+                    </div>
+                  </div>
+                )}
+
+                {linkedEvent && (
+                  <div className="p-3.5 rounded-2xl bg-[#F6F6F9] border border-slate-200 flex items-center justify-between gap-3 text-left">
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wide">
+                        Partner Event (Closed)
                       </span>
-                    </p>
+                      <h4 className="text-xs font-extrabold text-[#141416] truncate">
+                        {linkedEvent.title}
+                      </h4>
+                      <p className="text-[11px] text-zinc-500 mt-0.5 truncate">
+                        {linkedEvent.location} • Status:{' '}
+                        <span className="font-bold text-rose-600">
+                          Event Ended
+                        </span>
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (onNavigateToEvent) {
-                    onNavigateToEvent(contest.required_event_id || undefined);
-                  }
-                }}
-                className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Calendar className="w-4 h-4 text-[#FFEA00]" />
-                <span>Click to View &amp; Join Event</span>
-              </button>
-            </div>
-          ) : hasRequiredEvent && !isEventCheckedIn ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasscodeInput('');
+                    setPasscodeError('');
+                    setShowPasscodeModal(true);
+                  }}
+                  className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Key className="w-4 h-4 text-[#FFEA00]" />
+                  <span>Enter 5-Digit Passcode</span>
+                </button>
+              </div>
+            ) : (
+              /* ==========================================================
+                 STATE 1A: EVENT IS OPEN -> MUST JOIN EVENT TO PARTICIPATE
+                 ========================================================== */
+              <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-4 text-center animate-in fade-in duration-300">
+                <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+                  <Calendar className="w-7 h-7" />
+                </div>
+
+                <div>
+                  <h2 className="text-base font-extrabold text-zinc-950">
+                    Event Participation Required
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                    To participate in this contest once it opens, you must join our partner event: <strong className="text-zinc-800">{linkedEvent?.title || 'Partner Event'}</strong>.
+                  </p>
+                </div>
+
+                {contest.requirement_note && (
+                  <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left">
+                    <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wide">
+                      Contest Requirement
+                    </div>
+                    <div className="text-xs text-amber-950 font-medium mt-0.5 whitespace-pre-line leading-relaxed">
+                      {contest.requirement_note}
+                    </div>
+                  </div>
+                )}
+
+                {linkedEvent && (
+                  <div className="p-3.5 rounded-2xl bg-[#F6F6F9] border border-slate-200 flex items-center justify-between gap-3 text-left">
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-[#EC008C] tracking-wide">
+                        Required Event
+                      </span>
+                      <h4 className="text-xs font-extrabold text-[#141416] truncate">
+                        {linkedEvent.title}
+                      </h4>
+                      <p className="text-[11px] text-zinc-500 mt-0.5 truncate">
+                        {linkedEvent.location} • Status:{' '}
+                        <span className="font-bold text-amber-600">
+                          Not Joined Yet
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigateToEvent) {
+                      onNavigateToEvent(contest.required_event_id || undefined);
+                    }
+                  }}
+                  className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Calendar className="w-4 h-4 text-[#FFEA00]" />
+                  <span>Click to View &amp; Join Event</span>
+                </button>
+              </div>
+            )
+          ) : hasRequiredEvent && !isEventCheckedIn && !isUnlockedViaPasscode ? (
             /* ==========================================================
-               STATE 2: USER HAS JOINED BUT NOT CHECKED IN (WAITING FOR EVENT DATE)
+               STATE 2: USER HAS JOINED BUT NOT CHECKED IN
                ========================================================== */
             <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-4 text-center animate-in fade-in duration-300">
               <div className="w-14 h-14 rounded-full bg-blue-50 border border-blue-200 text-[#0B57D0] flex items-center justify-center mx-auto shadow-xs">
@@ -721,10 +913,12 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
               <div>
                 <h2 className="text-base font-extrabold text-zinc-950">
-                  Waiting for Event Date
+                  {isEventEnded ? 'Missed Event Check-In' : 'Waiting for Event Date'}
                 </h2>
                 <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                  You have joined this event! Contest submissions open after you check in on the event date.
+                  {isEventEnded
+                    ? 'The event has concluded without venue check-in. If you attended or were granted offline access, enter your 5-digit passcode below.'
+                    : 'You have joined this event! Contest submissions open after you check in on the event date.'}
                 </p>
               </div>
 
@@ -751,7 +945,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                     <p className="text-[11px] text-emerald-800 mt-0.5 truncate">
                       {linkedEvent.location} • Status:{' '}
                       <span className="font-extrabold text-emerald-700">
-                        Joined ✓ (Check-In Needed)
+                        Joined ✓ ({isEventEnded ? 'Check-in Closed' : 'Check-In Needed'})
                       </span>
                     </p>
                   </div>
@@ -761,18 +955,50 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (onNavigateToEvent) {
-                    onNavigateToEvent(contest.required_event_id || undefined);
-                  }
-                }}
-                className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Calendar className="w-4 h-4 text-[#FFEA00]" />
-                <span>View Event &amp; Check In</span>
-              </button>
+              {isEventEnded ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasscodeInput('');
+                    setPasscodeError('');
+                    setShowPasscodeModal(true);
+                  }}
+                  className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Key className="w-4 h-4 text-[#FFEA00]" />
+                  <span>Enter 5-Digit Passcode</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigateToEvent) {
+                      onNavigateToEvent(contest.required_event_id || undefined);
+                    }
+                  }}
+                  className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Calendar className="w-4 h-4 text-[#FFEA00]" />
+                  <span>View Event &amp; Check In</span>
+                </button>
+              )}
+            </div>
+          ) : cd?.isUpcoming ? (
+            /* ==========================================================
+               UPCOMING CONTEST NOT OPEN YET (EVENT REQS FULFILLED OR UNLOCKED)
+               ========================================================== */
+            <div className="w-full p-6 rounded-3xl bg-white shadow-xs space-y-3 text-center animate-in fade-in duration-300">
+              <div className="w-14 h-14 rounded-full bg-blue-50 text-[#0B57D0] flex items-center justify-center mx-auto">
+                <Clock className="w-7 h-7" />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-zinc-950">
+                  Contest Starts Soon ⏳
+                </h2>
+                <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                  You are all set! Submissions have not opened yet. Please check back when the countdown timer reaches zero!
+                </p>
+              </div>
             </div>
           ) : isQuotaReached ? (
             /* ==========================================================
@@ -856,25 +1082,35 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                ========================================================== */
             <form onSubmit={handleSubmit} className="w-full space-y-4">
               <div className="w-full p-5 rounded-3xl bg-white shadow-xs space-y-4">
-                {/* Requirements Summary Card */}
-                {(contest.required_event_id || contest.requirement_note) && (
-                  <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 space-y-2 text-left">
-                    {contest.required_event_id && linkedEvent && (
-                      <div className="flex items-center justify-between text-xs font-bold text-emerald-950">
-                        <div className="flex items-center gap-2 min-w-0 truncate">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span className="truncate">Required to Join Event: {linkedEvent.title}</span>
-                        </div>
-                        <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-200/70 px-2 py-0.5 rounded-full shrink-0">
-                          Done ✓
-                        </span>
-                      </div>
-                    )}
-                    {contest.requirement_note && (
-                      <div className="text-xs text-zinc-800 pt-1.5 border-t border-emerald-200/60 leading-relaxed font-medium">
-                        {contest.requirement_note}
-                      </div>
-                    )}
+                {/* 1. Mandatory Contest Requirement Note */}
+                {contest.requirement_note && (
+                  <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left space-y-1">
+                    <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wide flex items-center justify-between">
+                      <span>Contest Requirement</span>
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-200/60 px-2 py-0.5 rounded-full">
+                        Mandatory
+                      </span>
+                    </div>
+                    <div className="text-xs text-amber-950 font-bold leading-relaxed whitespace-pre-line">
+                      {contest.requirement_note}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Required Event Completed / Unlocked Status Badge */}
+                {contest.required_event_id && (
+                  <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-center justify-between text-xs font-bold text-emerald-950 text-left">
+                    <div className="flex items-center gap-2 min-w-0 truncate">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="truncate">
+                        {isUnlockedViaPasscode
+                          ? 'Event Passcode: Unlocked ✓'
+                          : `Required Event: ${linkedEvent?.title || 'Partner Event'}`}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-200/70 px-2 py-0.5 rounded-full shrink-0">
+                      Done ✓
+                    </span>
                   </div>
                 )}
 
@@ -1065,6 +1301,101 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       ) : (
         <div className="w-full p-8 rounded-3xl bg-white text-center text-xs text-zinc-400 shadow-xs">
           No contest active right now. Please check back later.
+        </div>
+      )}
+
+      {/* 5-Digit Passcode Unlock Modal */}
+      {showPasscodeModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-5 animate-in fade-in duration-200 font-primary">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl space-y-5 text-center relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPasscodeModal(false);
+                setPasscodeError('');
+                setPasscodeInput('');
+              }}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-zinc-500 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+              <Key className="w-7 h-7" />
+            </div>
+
+            <div>
+              <h3 className="text-base font-extrabold text-zinc-950">
+                Enter Event Passcode
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                Enter the 5-digit passcode provided by the organizer to unlock this contest.
+              </p>
+            </div>
+
+            <form onSubmit={handleVerifyPasscode} className="space-y-4">
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={5}
+                  value={passcodeInput}
+                  disabled={cooldownRemainingSecs > 0}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 5);
+                    setPasscodeInput(val);
+                    if (passcodeError) setPasscodeError('');
+                  }}
+                  placeholder="• • • • •"
+                  autoFocus
+                  className="w-full h-14 px-4 text-center font-mono text-2xl font-black tracking-[0.4em] rounded-2xl bg-slate-50 border-2 border-slate-200 outline-none focus:border-[#0B57D0] focus:bg-white text-zinc-900 transition disabled:opacity-50 disabled:bg-slate-100"
+                />
+
+                {cooldownRemainingSecs > 0 ? (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center justify-center gap-2">
+                    <Clock className="w-4 h-4 shrink-0 animate-pulse" />
+                    <span>
+                      Locked. Try again in{' '}
+                      <span className="font-mono font-bold">
+                        {Math.floor(cooldownRemainingSecs / 60)}:
+                        {String(cooldownRemainingSecs % 60).padStart(2, '0')}
+                      </span>
+                    </span>
+                  </div>
+                ) : passcodeError ? (
+                  <p className="text-xs font-semibold text-rose-600 animate-in fade-in">
+                    {passcodeError}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-zinc-400">
+                    3 attempts allowed before a 5-minute timeout.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasscodeModal(false);
+                    setPasscodeError('');
+                    setPasscodeInput('');
+                  }}
+                  className="flex-1 h-11 rounded-full bg-slate-100 hover:bg-slate-200 text-zinc-700 font-bold text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={cooldownRemainingSecs > 0 || passcodeInput.length !== 5}
+                  className="flex-1 h-11 rounded-full bg-[#141416] hover:bg-zinc-800 disabled:opacity-40 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] cursor-pointer"
+                >
+                  Unlock Contest
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
