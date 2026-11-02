@@ -72,7 +72,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   }, [initialContestId, db.contests, selectedContestId]);
 
   const contest =
-    db.contests.find((c) => c.id === selectedContestId) || db.contests[0] || null;
+    db.contests.find((c) => c.id.toLowerCase() === selectedContestId.toLowerCase()) || db.contests[0] || null;
 
   // Check required event
   const linkedEvent = React.useMemo(() => {
