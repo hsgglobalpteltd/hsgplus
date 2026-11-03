@@ -1674,9 +1674,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     <div className="flex items-center gap-1.5 truncate">
                       <MapPin className="w-3.5 h-3.5 shrink-0 text-black/70" />
                       <span className="truncate">
-                        {ev.location_name && ev.location_address && ev.location_name !== ev.location_address
-                          ? `${ev.location_name} • ${ev.location_address}`
-                          : ev.location_name || ev.location || ev.location_address}
+                        {ev.location_name || ev.location || ev.location_address}
                       </span>
                     </div>
                     <span className="shrink-0 text-[11px] font-semibold text-black/80">
@@ -1774,9 +1772,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                       <div className="flex items-center gap-1.5 truncate">
                         <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                         <span className="truncate">
-                          {ev.location_name && ev.location_address && ev.location_name !== ev.location_address
-                            ? `${ev.location_name} • ${ev.location_address}`
-                            : ev.location_name || ev.location || ev.location_address}
+                          {ev.location_name || ev.location || ev.location_address}
                         </span>
                       </div>
                       <span className="shrink-0 text-[11px] text-zinc-400">

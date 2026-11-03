@@ -929,9 +929,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         </li>
                       )}
                     </ul>
-                    <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
-                      Upload purchase receipt.
-                    </p>
                   </div>
                 )}
 
@@ -1004,9 +1001,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         </li>
                       )}
                     </ul>
-                    <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
-                      Upload purchase receipt.
-                    </p>
                   </div>
                 )}
 
@@ -1097,9 +1091,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                       </li>
                     )}
                   </ul>
-                  <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
-                    Upload purchase receipt.
-                  </p>
                 </div>
               )}
 
@@ -1368,9 +1359,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         </li>
                       )}
                     </ul>
-                    <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
-                      Upload purchase receipt.
-                    </p>
                   </div>
                 )}
 
@@ -1668,24 +1656,26 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       {showTermsModal && contest && (
         <div className="fixed inset-0 z-50 bg-[#F6F6F9] overflow-y-auto flex flex-col font-sans animate-in fade-in duration-200">
           {/* Top Sticky Header */}
-          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-2xs">
+          <div className="sticky top-0 z-10 bg-[#FFEA00] border-b border-black/10 px-4 py-3 flex items-center justify-between relative shadow-xs">
             <button
               type="button"
               onClick={() => setShowTermsModal(false)}
-              className="flex items-center gap-1 text-xs font-extrabold text-zinc-700 hover:text-zinc-950 px-2.5 py-1.5 rounded-full hover:bg-slate-100 transition cursor-pointer"
+              className="z-10 flex items-center gap-1 text-xs font-extrabold text-[#141416] px-3 py-1.5 rounded-full bg-white hover:bg-white/90 shadow-2xs active:scale-95 transition cursor-pointer"
             >
-              <ArrowLeft className="w-4 h-4 text-zinc-800" />
+              <ArrowLeft className="w-4 h-4 text-[#141416]" />
               <span>Back</span>
             </button>
-            <h2 className="text-sm font-extrabold text-[#141416] truncate max-w-[220px]">
-              Terms &amp; Conditions
-            </h2>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <h2 className="text-sm font-extrabold text-[#141416] tracking-tight">
+                Terms &amp; Conditions
+              </h2>
+            </div>
             <button
               type="button"
               onClick={() => setShowTermsModal(false)}
-              className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-zinc-600 transition cursor-pointer"
+              className="z-10 w-8 h-8 rounded-full bg-white hover:bg-white/90 flex items-center justify-center text-[#141416] shadow-2xs active:scale-95 transition cursor-pointer"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 text-[#141416]" />
             </button>
           </div>
 
