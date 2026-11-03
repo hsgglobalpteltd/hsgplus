@@ -419,22 +419,22 @@ export const HomePage: React.FC<HomePageProps> = ({
             {db.announcements.map((ann) => (
               <div
                 key={ann.id}
-                className="w-full p-4 rounded-2xl bg-[#141416] text-white shadow-xs"
+                className="w-full p-4 rounded-2xl bg-white text-[#141416] border border-zinc-200/80 shadow-xs"
               >
                 <div className="flex items-center gap-2">
-                  <Megaphone className="w-4 h-4 text-[#FFEA00] shrink-0 stroke-[1.75]" />
-                  <h3 className="text-sm font-bold text-white truncate">
+                  <Megaphone className="w-4 h-4 text-amber-500 shrink-0 stroke-[1.75]" />
+                  <h3 className="text-sm font-bold text-[#141416] truncate">
                     {ann.title}
                   </h3>
                 </div>
-                <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
+                <p className="text-xs text-zinc-600 mt-1.5 leading-relaxed">
                   {ann.body}
                 </p>
               </div>
             ))}
           </div>
         ) : (
-          <div className="w-full p-5 rounded-2xl bg-white text-xs text-zinc-400">
+          <div className="w-full p-5 rounded-2xl bg-white border border-zinc-200/80 text-xs text-zinc-400 shadow-xs">
             No announcements available.
           </div>
         )}

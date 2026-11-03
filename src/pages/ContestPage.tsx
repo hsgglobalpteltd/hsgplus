@@ -16,6 +16,7 @@ import {
   X,
   AlertCircle,
   ExternalLink,
+  Ticket,
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { compressImageFile } from '../lib/imageCompressor';
@@ -37,7 +38,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   onNavigateToEvent,
   autoScrollToContent = false,
 }) => {
-  const { db, submitContestEntry, showToast } = useHsgData();
+  const { db, submitContestEntry, showToast, isAuthenticated, openLoginModal } = useHsgData();
 
   const [selectedContestId, setSelectedContestId] = useState<string>(
     initialContestId || db.contests[0]?.id || ''
@@ -59,6 +60,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const [isEnteringAnother, setIsEnteringAnother] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
+  const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
 
   // Reference for smooth scrolling directly down past posters to the submission/status section
   const contentAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -481,6 +483,11 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     e.preventDefault();
     if (!contest) return;
 
+    if (!isAuthenticated) {
+      openLoginModal();
+      return;
+    }
+
     if (isWinnersAnnounced) {
       showToast('Winners have already been announced for this contest.');
       return;
@@ -513,16 +520,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       return;
     }
 
-    if (!totalAmount || Number(totalAmount) <= 0) {
-      showToast('Please enter the total amount paid ($).');
-      return;
-    }
-
-    if (!qty || Number(qty) < 1) {
-      showToast('Please enter the quantity of items purchased.');
-      return;
-    }
-
     // Validate all extra contest questions are answered (all are mandatory, without badge/tick)
     for (let i = 0; i < extraQuestionsList.length; i++) {
       const q = extraQuestionsList[i];
@@ -549,8 +546,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
       contest.id,
       {
         receipt_photo_url: receiptPhotoUrl || receiptPreviewUrl,
-        amount_paid: Number(totalAmount),
-        items_count: Number(qty),
+        amount_paid: Number(totalAmount || 0),
+        items_count: Number(qty || 0),
       }
     );
 
@@ -606,7 +603,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
           </div>
 
           {/* 3. INSIDE DESCRIPTION & INSTRUCTION (ACCORDION COLLAPSIBLE) */}
-          {(contest.inside_description || contest.inside_instruction) && (
+          {isAuthenticated && (contest.inside_description || contest.inside_instruction) && (
             <div className="w-full p-4 rounded-3xl bg-white shadow-xs space-y-3">
               {contest.inside_description && (
                 <div>
@@ -815,6 +812,30 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                 )}
               </div>
             </div>
+          ) : !isAuthenticated ? (
+            /* ==========================================================
+               GATE: USER NOT LOGGED IN -> HIDE ALL WORDS/STATES AND SHOW LOGIN PROMPT
+               ========================================================== */
+            <div className="w-full p-6 rounded-3xl bg-white shadow-xs text-center space-y-4 animate-in fade-in duration-200">
+              <div className="w-14 h-14 rounded-full bg-zinc-100 text-zinc-700 flex items-center justify-center mx-auto">
+                <Lock className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-extrabold text-[#141416]">
+                  Log In to Participate
+                </h3>
+                <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                  Please log in with your account to view contest details and submit your entry.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openLoginModal()}
+                className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Log In to Continue</span>
+              </button>
+            </div>
           ) : cd?.isEnded ? (
             /* ==========================================================
                CONTEST PERIOD ENDED BUT WINNERS NOT ANNOUNCED YET
@@ -871,52 +892,66 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                     Missed the Event? ⏳
                   </h2>
                   <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                    Oh, sorry you missed the event! But you can still participate in this contest by entering your 5-digit Event Passcode.
+                    Missed or skipped the event? You can still participate by entering your ticket passcode to unlock this contest without entering the event.
                   </p>
                 </div>
 
-                {contest.requirement_note && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left">
-                    <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wide">
-                      Contest Requirement
-                    </div>
-                    <div className="text-xs text-amber-950 font-medium mt-0.5 whitespace-pre-line leading-relaxed">
-                      {contest.requirement_note}
-                    </div>
-                  </div>
-                )}
-
-                {linkedEvent && (
-                  <div className="p-3.5 rounded-2xl bg-[#F6F6F9] border border-slate-200 flex items-center justify-between gap-3 text-left">
-                    <div className="min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wide">
-                        Partner Event (Closed)
-                      </span>
-                      <h4 className="text-xs font-extrabold text-[#141416] truncate">
-                        {linkedEvent.title}
-                      </h4>
-                      <p className="text-[11px] text-zinc-500 mt-0.5 truncate">
-                        {linkedEvent.location} • Status:{' '}
-                        <span className="font-bold text-rose-600">
-                          Event Ended
+                {/* Unified Ticket to Join Contest Box */}
+                {(contest.requirement_note || linkedEvent) && (
+                  <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-left space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-extrabold uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
+                        <Ticket className="w-3.5 h-3.5 text-amber-800" />
+                        <span>Ticket to Join Contest</span>
+                      </div>
+                      {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-[#141416] text-[#FFEA00] text-[10px] font-extrabold">
+                          +{contest.reward_points || contest.submission_limits?.points_per_submission} pts
                         </span>
-                      </p>
+                      )}
                     </div>
+                    <ul className="space-y-1.5 text-xs text-[#141416]">
+                      {linkedEvent && (
+                        <li className="flex items-start gap-1.5 font-bold">
+                          <span className="text-amber-800 font-extrabold">•</span>
+                          <span>
+                            Joining event {linkedEvent.title}
+                            <span className="text-rose-600 font-bold ml-1.5 text-[11px]">
+                              (Event Ended)
+                            </span>
+                          </span>
+                        </li>
+                      )}
+                      {contest.requirement_note && (
+                        <li className="flex items-start gap-1.5 font-bold">
+                          <span className="text-amber-800 font-extrabold">•</span>
+                          <span className="whitespace-pre-line">{contest.requirement_note}</span>
+                        </li>
+                      )}
+                    </ul>
+                    <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
+                      Upload purchase receipt.
+                    </p>
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPasscodeInput('');
-                    setPasscodeError('');
-                    setShowPasscodeModal(true);
-                  }}
-                  className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Key className="w-4 h-4 text-[#FFEA00]" />
-                  <span>Enter 5-Digit Passcode</span>
-                </button>
+                <div className="space-y-1.5 w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPasscodeInput('');
+                      setPasscodeError('');
+                      setShowPasscodeModal(true);
+                    }}
+                    className="w-full h-12 px-3 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer text-center"
+                  >
+                    <Key className="w-4 h-4 text-[#FFEA00] shrink-0" />
+                    <span>Enter Ticket Passcode</span>
+                  </button>
+                  <p className="text-xs text-zinc-500 text-center font-medium">
+                    to Unlock without entering event
+                  </p>
+                </div>
               </div>
             ) : (
               /* ==========================================================
@@ -936,33 +971,42 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                   </p>
                 </div>
 
-                {contest.requirement_note && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left">
-                    <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wide">
-                      Contest Requirement
-                    </div>
-                    <div className="text-xs text-amber-950 font-medium mt-0.5 whitespace-pre-line leading-relaxed">
-                      {contest.requirement_note}
-                    </div>
-                  </div>
-                )}
-
-                {linkedEvent && (
-                  <div className="p-3.5 rounded-2xl bg-[#F6F6F9] border border-slate-200 flex items-center justify-between gap-3 text-left">
-                    <div className="min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-[#EC008C] tracking-wide">
-                        Required Event
-                      </span>
-                      <h4 className="text-xs font-extrabold text-[#141416] truncate">
-                        {linkedEvent.title}
-                      </h4>
-                      <p className="text-[11px] text-zinc-500 mt-0.5 truncate">
-                        {linkedEvent.location} • Status:{' '}
-                        <span className="font-bold text-amber-600">
-                          Not Joined Yet
+                {/* Unified Ticket to Join Contest Box */}
+                {(contest.requirement_note || linkedEvent) && (
+                  <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-left space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-extrabold uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
+                        <Ticket className="w-3.5 h-3.5 text-amber-800" />
+                        <span>Ticket to Join Contest</span>
+                      </div>
+                      {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-[#141416] text-[#FFEA00] text-[10px] font-extrabold">
+                          +{contest.reward_points || contest.submission_limits?.points_per_submission} pts
                         </span>
-                      </p>
+                      )}
                     </div>
+                    <ul className="space-y-1.5 text-xs text-[#141416]">
+                      {linkedEvent && (
+                        <li className="flex items-start gap-1.5 font-bold">
+                          <span className="text-amber-800 font-extrabold">•</span>
+                          <span>
+                            Joining event {linkedEvent.title}
+                            <span className="text-amber-700 font-bold ml-1.5 text-[11px]">
+                              (Required)
+                            </span>
+                          </span>
+                        </li>
+                      )}
+                      {contest.requirement_note && (
+                        <li className="flex items-start gap-1.5 font-bold">
+                          <span className="text-amber-800 font-extrabold">•</span>
+                          <span className="whitespace-pre-line">{contest.requirement_note}</span>
+                        </li>
+                      )}
+                    </ul>
+                    <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
+                      Upload purchase receipt.
+                    </p>
                   </div>
                 )}
 
@@ -978,6 +1022,26 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                   <Calendar className="w-4 h-4 text-[#FFEA00]" />
                   <span>Click to View &amp; Join Event</span>
                 </button>
+
+                {contest.event_passcode && (
+                  <div className="space-y-0.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPasscodeInput('');
+                        setPasscodeError('');
+                        setShowPasscodeModal(true);
+                      }}
+                      className="w-full text-center text-xs font-bold text-zinc-700 hover:text-zinc-900 transition py-0.5 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Key className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Enter Ticket Passcode</span>
+                    </button>
+                    <p className="text-[11px] text-zinc-500 text-center font-medium">
+                      to Unlock without entering event
+                    </p>
+                  </div>
+                )}
               </div>
             )
           ) : hasRequiredEvent && !isEventCheckedIn && !isUnlockedViaPasscode ? (
@@ -995,57 +1059,68 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                 </h2>
                 <p className="text-xs text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
                   {isEventEnded
-                    ? 'The event has concluded without venue check-in. If you attended or were granted offline access, enter your 5-digit passcode below.'
+                    ? 'The event has concluded without venue check-in. If you have a ticket passcode, enter it below to unlock this contest without entering the event.'
                     : 'You have joined this event! Contest submissions open after you check in on the event date.'}
                 </p>
               </div>
 
-              {contest.requirement_note && (
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-left">
-                  <div className="text-[10px] font-extrabold uppercase text-zinc-500 tracking-wide">
-                    Contest Requirement
-                  </div>
-                  <div className="text-xs text-zinc-800 font-medium mt-0.5 whitespace-pre-line leading-relaxed">
-                    {contest.requirement_note}
-                  </div>
-                </div>
-              )}
-
-              {linkedEvent && (
-                <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between gap-3 text-left">
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-bold uppercase text-emerald-700 tracking-wide">
-                      Required Event
-                    </span>
-                    <h4 className="text-xs font-extrabold text-emerald-950 truncate">
-                      {linkedEvent.title}
-                    </h4>
-                    <p className="text-[11px] text-emerald-800 mt-0.5 truncate">
-                      {linkedEvent.location} • Status:{' '}
-                      <span className="font-extrabold text-emerald-700">
-                        Joined ✓ ({isEventEnded ? 'Check-in Closed' : 'Check-In Needed'})
+              {/* Unified Ticket to Join Contest Box */}
+              {(contest.requirement_note || linkedEvent) && (
+                <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-extrabold uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
+                      <Ticket className="w-3.5 h-3.5 text-amber-800" />
+                      <span>Ticket to Join Contest</span>
+                    </div>
+                    {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#141416] text-[#FFEA00] text-[10px] font-extrabold">
+                        +{contest.reward_points || contest.submission_limits?.points_per_submission} pts
                       </span>
-                    </p>
+                    )}
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900 text-[10px] font-bold shrink-0">
-                    Joined
-                  </span>
+                  <ul className="space-y-1.5 text-xs text-[#141416]">
+                    {linkedEvent && (
+                      <li className="flex items-start gap-1.5 font-bold">
+                        <span className="text-amber-800 font-extrabold">•</span>
+                        <span>
+                          Joining event {linkedEvent.title}
+                          <span className="text-emerald-700 font-bold ml-1.5 text-[11px]">
+                            (Joined ✓{isEventEnded ? ' - Check-in Closed' : ''})
+                          </span>
+                        </span>
+                      </li>
+                    )}
+                    {contest.requirement_note && (
+                      <li className="flex items-start gap-1.5 font-bold">
+                        <span className="text-amber-800 font-extrabold">•</span>
+                        <span className="whitespace-pre-line">{contest.requirement_note}</span>
+                      </li>
+                    )}
+                  </ul>
+                  <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
+                    Upload purchase receipt.
+                  </p>
                 </div>
               )}
 
               {isEventEnded ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPasscodeInput('');
-                    setPasscodeError('');
-                    setShowPasscodeModal(true);
-                  }}
-                  className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Key className="w-4 h-4 text-[#FFEA00]" />
-                  <span>Enter 5-Digit Passcode</span>
-                </button>
+                <div className="space-y-1.5 w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPasscodeInput('');
+                      setPasscodeError('');
+                      setShowPasscodeModal(true);
+                    }}
+                    className="w-full h-12 px-3 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer text-center"
+                  >
+                    <Key className="w-4 h-4 text-[#FFEA00] shrink-0" />
+                    <span>Enter Ticket Passcode</span>
+                  </button>
+                  <p className="text-xs text-zinc-500 text-center font-medium">
+                    to Unlock without entering event
+                  </p>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -1095,27 +1170,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
                 <div className="space-y-1">
                   <h3 className="text-base font-extrabold text-[#141416]">
-                    {userSubmissionsCount === 1 ? 'Contest Entry Submitted!' : `${userSubmissionsCount} Entries Submitted!`}
+                    {userSubmissionsCount === 1 ? "Boom! You're In To Win! 🏆" : `Boom! ${userSubmissionsCount} Entries In To Win! 🏆`}
                   </h3>
-                  <div
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold ${
-                      hasApprovedEntry
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : 'bg-amber-50 text-amber-800 border-amber-200/80'
-                    }`}
-                  >
-                    {hasApprovedEntry ? (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Entry Approved • Awaiting Announcement ⏳</span>
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Entry is pending review</span>
-                      </>
-                    )}
-                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -1277,62 +1333,51 @@ export const ContestPage: React.FC<ContestPageProps> = ({
             </div>
           ) : (
             /* ==========================================================
-               SUBMISSION FORM
+               SUBMISSION FORM (ONLY DISPLAYED WHEN LOGGED IN)
                ========================================================== */
             <form onSubmit={handleSubmit} className="w-full space-y-4">
               <div className="w-full p-5 rounded-3xl bg-white shadow-xs space-y-4">
-                {/* 1. Mandatory Contest Requirement Note */}
-                {contest.requirement_note && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-left space-y-1">
-                    <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wide flex items-center justify-between">
-                      <span>Contest Requirement</span>
-                      <span className="text-[10px] font-bold text-amber-700 bg-amber-200/60 px-2 py-0.5 rounded-full">
-                        Mandatory
-                      </span>
+                {/* Unified Ticket to Join Contest Box */}
+                {(contest.requirement_note || contest.required_event_id) && (
+                  <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-left space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] font-extrabold uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
+                        <Ticket className="w-3.5 h-3.5 text-amber-800" />
+                        <span>Ticket to Join Contest</span>
+                      </div>
+                      {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-[#141416] text-[#FFEA00] text-[10px] font-extrabold">
+                          +{contest.reward_points || contest.submission_limits?.points_per_submission} pts
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs text-amber-950 font-bold leading-relaxed whitespace-pre-line">
-                      {contest.requirement_note}
-                    </div>
-                  </div>
-                )}
-
-                {/* 2. Required Event Completed / Unlocked Status Badge */}
-                {contest.required_event_id && (
-                  <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-center justify-between text-xs font-bold text-emerald-950 text-left">
-                    <div className="flex items-center gap-2 min-w-0 truncate">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="truncate">
-                        {isUnlockedViaPasscode
-                          ? 'Event Passcode: Unlocked ✓'
-                          : `Required Event: ${linkedEvent?.title || 'Partner Event'}`}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-200/70 px-2 py-0.5 rounded-full shrink-0">
-                      Done ✓
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-extrabold text-[#141416]">
-                      Submit Your Contest Entry
-                    </h2>
-                    <p className="text-[11px] text-zinc-500">
-                      Upload receipt &amp; purchase details to join
+                    <ul className="space-y-1.5 text-xs text-[#141416]">
+                      {contest.required_event_id && (
+                        <li className="flex items-start gap-1.5 font-bold">
+                          <span className="text-amber-800 font-extrabold">•</span>
+                          <span>
+                            Joining event {linkedEvent?.title || 'Partner Event'}
+                            <span className="text-emerald-700 font-extrabold ml-1">✓</span>
+                          </span>
+                        </li>
+                      )}
+                      {contest.requirement_note && (
+                        <li className="flex items-start gap-1.5 font-bold">
+                          <span className="text-amber-800 font-extrabold">•</span>
+                          <span className="whitespace-pre-line">{contest.requirement_note}</span>
+                        </li>
+                      )}
+                    </ul>
+                    <p className="text-[11px] text-amber-900/80 font-medium pt-0.5 border-t border-amber-200/60">
+                      Upload purchase receipt.
                     </p>
                   </div>
-                  {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0 && (
-                    <span className="px-2.5 py-1 rounded-full bg-[#141416] text-[#FFEA00] text-[11px] font-extrabold shadow-2xs">
-                      +{contest.reward_points || contest.submission_limits?.points_per_submission} pts
-                    </span>
-                  )}
-                </div>
+                )}
 
-                {/* 1. UPLOAD PURCHASE RECEIPT */}
+                {/* UPLOAD PURCHASE RECEIPT */}
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-[#141416]">
-                    1. Upload Purchase Receipt <span className="text-[#EC008C]">*</span>
+                    Upload Purchase Receipt <span className="text-[#EC008C]">*</span>
                   </label>
 
                   {!receiptAttached ? (
@@ -1401,52 +1446,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                       </label>
                     </div>
                   )}
-                </div>
-
-                {/* 2. AMOUNT PAID & QUANTITY PURCHASED */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-[#141416]">
-                      Amount Paid ($) <span className="text-[#EC008C]">*</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-400">
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={totalAmount}
-                        onFocus={handleInputFocus}
-                        onBlur={handleInputBlur}
-                        onChange={(e) =>
-                          setTotalAmount(e.target.value === '' ? '' : Number(e.target.value))
-                        }
-                        className="w-full h-11 pl-8 pr-3.5 rounded-2xl bg-[#F6F6F9] text-xs font-bold text-[#141416] border border-zinc-200/80 outline-none focus:border-[#141416]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-[#141416]">
-                      Qty Purchased <span className="text-[#EC008C]">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="1"
-                      placeholder="1"
-                      value={qty}
-                      onFocus={handleInputFocus}
-                      onBlur={handleInputBlur}
-                      onChange={(e) =>
-                        setQty(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10)))
-                      }
-                      className="w-full h-11 px-3.5 rounded-2xl bg-[#F6F6F9] text-xs font-bold text-[#141416] border border-zinc-200/80 outline-none focus:border-[#141416]"
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -1527,6 +1526,17 @@ export const ContestPage: React.FC<ContestPageProps> = ({
               />
             </form>
           )}
+
+          {/* Universal Contest Terms & Conditions Button (Always visible at bottom of EVERY contest state) */}
+          <div className="pt-2 pb-6 text-center">
+            <button
+              type="button"
+              onClick={() => setShowTermsModal(true)}
+              className="text-xs font-semibold text-zinc-400 hover:text-zinc-700 underline underline-offset-4 transition cursor-pointer"
+            >
+              Contest Terms &amp; Conditions
+            </button>
+          </div>
         </div>
       ) : (
         <div className="w-full p-8 rounded-3xl bg-white text-center text-xs text-zinc-400 shadow-xs">
@@ -1556,10 +1566,10 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
             <div>
               <h3 className="text-base font-extrabold text-zinc-950">
-                Enter Event Passcode
+                Enter Ticket Passcode
               </h3>
               <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
-                Enter the 5-digit passcode provided by the organizer to unlock this contest.
+                Enter the 5-digit ticket passcode to unlock this contest without entering the event.
               </p>
             </div>
 
@@ -1604,25 +1614,30 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                 )}
               </div>
 
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPasscodeModal(false);
-                    setPasscodeError('');
-                    setPasscodeInput('');
-                  }}
-                  className="flex-1 h-11 rounded-full bg-slate-100 hover:bg-slate-200 text-zinc-700 font-bold text-xs transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={cooldownRemainingSecs > 0 || passcodeInput.length !== 5}
-                  className="flex-1 h-11 rounded-full bg-[#141416] hover:bg-zinc-800 disabled:opacity-40 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] cursor-pointer"
-                >
-                  Unlock Contest
-                </button>
+              <div className="space-y-2 pt-1">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPasscodeModal(false);
+                      setPasscodeError('');
+                      setPasscodeInput('');
+                    }}
+                    className="flex-1 h-11 rounded-full bg-slate-100 hover:bg-slate-200 text-zinc-700 font-bold text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={cooldownRemainingSecs > 0 || passcodeInput.length !== 5}
+                    className="flex-1 h-11 px-3 rounded-full bg-[#141416] hover:bg-zinc-800 disabled:opacity-40 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] cursor-pointer"
+                  >
+                    Unlock Contest
+                  </button>
+                </div>
+                <p className="text-[11px] text-zinc-400 text-center font-medium">
+                  to Unlock without entering event
+                </p>
               </div>
             </form>
           </div>
@@ -1648,6 +1663,71 @@ export const ContestPage: React.FC<ContestPageProps> = ({
           showToast('Contest entry submitted successfully!');
         }}
       />
+
+      {/* Full Page Contest Terms & Conditions View */}
+      {showTermsModal && contest && (
+        <div className="fixed inset-0 z-50 bg-[#F6F6F9] overflow-y-auto flex flex-col font-sans animate-in fade-in duration-200">
+          {/* Top Sticky Header */}
+          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setShowTermsModal(false)}
+              className="flex items-center gap-1 text-xs font-extrabold text-zinc-700 hover:text-zinc-950 px-2.5 py-1.5 rounded-full hover:bg-slate-100 transition cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-zinc-800" />
+              <span>Back</span>
+            </button>
+            <h2 className="text-sm font-extrabold text-[#141416] truncate max-w-[220px]">
+              Terms &amp; Conditions
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowTermsModal(false)}
+              className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-zinc-600 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Full Page Content Body */}
+          <div className="flex-1 max-w-lg w-full mx-auto p-5 pb-16 space-y-4">
+            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left">
+              <div className="border-b border-slate-100 pb-3">
+                <span className="text-[10px] font-extrabold uppercase text-[#0B57D0] tracking-wider">
+                  Contest Rules &amp; Terms
+                </span>
+                <h1 className="text-base font-extrabold text-[#141416] mt-0.5">
+                  {contest.frontpage_title || contest.title}
+                </h1>
+                {contest.requirement_note && (
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Entry Requirement: <span className="font-semibold text-zinc-800">{contest.requirement_note}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Terms Paragraph */}
+              <div className="text-xs text-zinc-700 leading-relaxed whitespace-pre-line font-normal space-y-2">
+                {contest.terms_and_conditions?.trim() ? (
+                  contest.terms_and_conditions
+                ) : (
+                  <div className="text-zinc-500 italic py-4">
+                    Standard contest terms and conditions apply. By participating and submitting a receipt, entrants agree to comply with all official contest requirements, eligibility rules, and organizer verification policies.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowTermsModal(false)}
+              className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center cursor-pointer"
+            >
+              <span>Back to Contest</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

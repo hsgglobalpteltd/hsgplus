@@ -377,6 +377,7 @@ export interface HsgContest {
   required_event_id?: string | null;
   requirement_note?: string;
   event_passcode?: string | null;
+  terms_and_conditions?: string;
   poster_images?: string[];
   inside_posters?: string[];
   inside_description?: string;

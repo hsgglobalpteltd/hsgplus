@@ -844,10 +844,10 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     onClick={() => {
                       if (onOpenContest) onOpenContest(tiedContest.id, true);
                     }}
-                    className="w-full h-11 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <span>🏆</span>
-                    <span>{hasSubmittedTiedContest ? 'View Contest Status' : 'Submit Contest Entry'}</span>
+                    <span>{hasSubmittedTiedContest ? '👀' : '🎉'}</span>
+                    <span>{hasSubmittedTiedContest ? 'Check My Contest Entry' : 'Join Contest & Win!'}</span>
                   </button>
                 )}
 
@@ -871,7 +871,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                   </div>
                   <div>
                     <h4 className="text-sm font-extrabold text-emerald-900">
-                      Thank you for joining!
+                      Enjoy The Event! 🎊
                     </h4>
                     <p className="text-xs text-emerald-700 mt-0.5">
                       Your attendance is verified in the system.
@@ -885,10 +885,10 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     onClick={() => {
                       if (onOpenContest) onOpenContest(tiedContest.id, true);
                     }}
-                    className="w-full h-11 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <span>🏆</span>
-                    <span>{hasSubmittedTiedContest ? 'View Contest Status' : 'Submit Contest Entry'}</span>
+                    <span>{hasSubmittedTiedContest ? '👀' : '🎉'}</span>
+                    <span>{hasSubmittedTiedContest ? 'Check My Contest Entry' : 'Join Contest & Win!'}</span>
                   </button>
                 )}
 
@@ -904,38 +904,47 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                 </button>
               </div>
             ) : isJoined ? (
-              /* STATE C: JOINED (Left button is "Joined", Right button is "Check-In") */
-              <div className="mt-5 space-y-2">
-                <div className="w-full grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    disabled
-                    className="h-11 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-xs cursor-default"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Joined</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={!isCheckInOpen}
-                    onClick={() => {
-                      if (!isAuthenticated) {
-                        openLoginModal();
-                        return;
-                      }
-                      setShowCheckInModal(true);
-                    }}
-                    className={`h-11 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 transition ${
-                      isCheckInOpen
-                        ? 'bg-[#FFEA00] text-[#141416] shadow-sm active:scale-95 cursor-pointer ring-2 ring-[#FFEA00]/40'
-                        : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>Check-In</span>
-                  </button>
+              /* STATE C: JOINED (Layout Design A: Capsule on top + Full-Width Action Button) */
+              <div className="mt-5 space-y-3">
+                <div className="w-full p-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-950 flex items-start gap-3 shadow-xs">
+                  <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <Check className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-extrabold text-emerald-900">
+                      You're On The List! 🎉
+                    </h4>
+                    <p className="text-xs text-emerald-700 mt-0.5 leading-relaxed">
+                      {isCheckInOpen
+                        ? '● Check-in is now open! Please tap Enter Event below to check in.'
+                        : `Check-in opens 30 mins before event (at ${new Date(eventTimes.checkInOpen).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })})`}
+                    </p>
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  disabled={!isCheckInOpen}
+                  onClick={() => {
+                    if (!isAuthenticated) {
+                      openLoginModal();
+                      return;
+                    }
+                    setShowCheckInModal(true);
+                  }}
+                  className={`w-full h-12 rounded-full font-extrabold text-xs flex items-center justify-center gap-2 transition shadow-md ${
+                    isCheckInOpen
+                      ? 'bg-[#FFEA00] text-[#141416] shadow-sm active:scale-95 cursor-pointer ring-2 ring-[#FFEA00]/40'
+                      : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                  }`}
+                >
+                  <span>🚀</span>
+                  <span>
+                    {isCheckInOpen
+                      ? 'Enter Event'
+                      : `Enter Event (Opens at ${new Date(eventTimes.checkInOpen).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })})`}
+                  </span>
+                </button>
 
                 {onBackToSource && backLabel && (
                   <button
@@ -945,17 +954,6 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                   >
                     <span>Return to {backLabel} &rarr;</span>
                   </button>
-                )}
-
-                {!isCheckInOpen && (
-                  <p className="text-[11px] text-zinc-500 text-center">
-                    Check-in opens 30 mins before event on {formatDate(activeEvent.date_timestamp)}
-                  </p>
-                )}
-                {isCheckInOpen && (
-                  <p className="text-[11px] text-emerald-600 font-bold text-center">
-                    ● Check-in is now open! Tap Check-In to scan or show QR
-                  </p>
                 )}
 
                 <button
@@ -970,30 +968,42 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                 </button>
               </div>
             ) : (
-              /* STATE D: NOT JOINED YET (Left: Join / Join with $.., Right: Skip closes page) */
-              <div className="mt-5 space-y-2">
-                <div className="w-full grid grid-cols-2 gap-2.5">
+              /* STATE D: NOT JOINED YET */
+              isCheckInOpen ? (
+                /* EVENT IS LIVE / CHECK-IN IS OPEN -> DIRECT ENTER EVENT WITH AUTO SIGN-UP */
+                <div className="mt-5 space-y-2">
                   <button
                     type="button"
                     disabled={isFull}
-                    onClick={() => {
+                    onClick={async () => {
                       if (!isAuthenticated) {
                         openLoginModal();
                         return;
                       }
-                      handleJoinClick(activeEvent);
+                      if (hasCashbackFee) {
+                        setPendingPaymentEvent(activeEvent);
+                        return;
+                      }
+                      // Auto sign-up free event and open check-in directly
+                      try {
+                        await rsvpEvent(activeEvent.id, 'joined', 'free');
+                      } catch {}
+                      setShowCheckInModal(true);
                     }}
-                    className={`h-11 rounded-full font-bold text-xs transition shadow-sm ${
+                    className={`w-full h-12 rounded-full font-extrabold text-xs flex items-center justify-center gap-2 transition shadow-md ${
                       isFull
                         ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-                        : 'bg-[#EC008C] text-white active:scale-95 cursor-pointer'
+                        : 'bg-[#FFEA00] text-[#141416] shadow-sm active:scale-95 cursor-pointer ring-2 ring-[#FFEA00]/40'
                     }`}
                   >
-                    {isFull
-                      ? 'Event Full'
-                      : hasCashbackFee
-                      ? `Join with $${feeAmount.toFixed(2)}`
-                      : 'Join'}
+                    <span>🚀</span>
+                    <span>
+                      {isFull
+                        ? 'Event Full'
+                        : hasCashbackFee
+                        ? `Enter Event with $${feeAmount.toFixed(2)}`
+                        : 'Enter Event'}
+                    </span>
                   </button>
 
                   <button
@@ -1002,28 +1012,67 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                       if (onBackToSource) onBackToSource();
                       else onSelectEvent(null);
                     }}
-                    className="h-11 rounded-full font-bold text-xs bg-[#F6F6F9] text-zinc-700 hover:bg-zinc-200 active:scale-95 transition cursor-pointer"
+                    className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
                   >
-                    Skip
+                    {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                   </button>
                 </div>
-                {hasCashbackFee && (
-                  <p className="text-[10px] text-zinc-400 text-center">
-                    Notice: Event fee is non-refundable upon RSVP.
-                  </p>
-                )}
+              ) : (
+                /* BEFORE CHECK-IN WINDOW -> SIGN ME UP / SKIP */
+                <div className="mt-5 space-y-2">
+                  <div className="w-full grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      disabled={isFull}
+                      onClick={() => {
+                        if (!isAuthenticated) {
+                          openLoginModal();
+                          return;
+                        }
+                        handleJoinClick(activeEvent);
+                      }}
+                      className={`h-11 rounded-full font-bold text-xs transition shadow-sm ${
+                        isFull
+                          ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                          : 'bg-[#EC008C] text-white active:scale-95 cursor-pointer'
+                      }`}
+                    >
+                      {isFull
+                        ? 'Event Full'
+                        : hasCashbackFee
+                        ? `Sign Up ($${feeAmount.toFixed(2)})`
+                        : 'Sign Me Up!'}
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onBackToSource) onBackToSource();
-                    else onSelectEvent(null);
-                  }}
-                  className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
-                >
-                  {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onBackToSource) onBackToSource();
+                        else onSelectEvent(null);
+                      }}
+                      className="h-11 rounded-full font-bold text-xs bg-[#F6F6F9] text-zinc-700 hover:bg-zinc-200 active:scale-95 transition cursor-pointer"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                  {hasCashbackFee && (
+                    <p className="text-[10px] text-zinc-400 text-center">
+                      Notice: Event fee is non-refundable upon RSVP.
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onBackToSource) onBackToSource();
+                      else onSelectEvent(null);
+                    }}
+                    className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                  >
+                    {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
+                  </button>
+                </div>
+              )
             )}
           </div>
         </div>
@@ -1062,7 +1111,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                   </div>
                   <div>
                     <h3 className="text-base font-extrabold text-white">
-                      Thank you for joining!
+                      Enjoy The Event! 🎊
                     </h3>
                     <p className="text-xs text-zinc-300 mt-1">
                       Your attendance is verified.
@@ -1458,34 +1507,30 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                 ? `translateY(${Math.min(pullPastDistance * 0.4, 20)}px)`
                 : undefined,
               opacity: loadedPastCount > 0 ? 1 : Math.min(1, Math.max(0, (pullPastDistance - 6) / 20)),
-              maxHeight: loadedPastCount > 0 ? '60px' : `${Math.min(pullPastDistance * 1.1, 48)}px`,
+              maxHeight: loadedPastCount > 0 ? '40px' : `${Math.min(pullPastDistance * 1.1, 40)}px`,
               transition: isPullingPast ? 'none' : 'all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
             }}
-            className="w-full flex items-center gap-2 overflow-hidden"
+            className="w-full flex items-center justify-between px-1 py-1 overflow-hidden"
           >
           {remainingPastCount > 0 ? (
             <button
               type="button"
               onClick={handleLoadMorePast}
               disabled={isLoadingPast}
-              className={`flex-1 h-10 px-4 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs active:scale-[0.99] transition cursor-pointer ${
-                pullPastDistance >= 40
-                  ? 'bg-[#141416] text-[#FFEA00] scale-[1.02]'
-                  : 'bg-white text-[#141416]'
-              }`}
+              className="w-full py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800 flex items-center justify-center gap-1.5 transition cursor-pointer select-none bg-transparent"
             >
               {isLoadingPast ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#EC008C]" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />
                   <span>Loading older events...</span>
                 </>
               ) : isPullingPast ? (
                 <>
                   <ArrowDown
-                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                    className={`w-3.5 h-3.5 transition-transform duration-200 text-zinc-500 ${
                       pullPastDistance >= 40
-                        ? '-rotate-180 text-[#FFEA00]'
-                        : 'text-[#EC008C]'
+                        ? '-rotate-180'
+                        : ''
                     }`}
                   />
                   <span>
@@ -1496,13 +1541,13 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                 </>
               ) : (
                 <>
-                  <ArrowDown className="w-3.5 h-3.5 text-[#EC008C]" />
+                  <ArrowDown className="w-3.5 h-3.5 text-zinc-500" />
                   <span>Pull down or tap to load older events</span>
                 </>
               )}
             </button>
           ) : (
-            <div className="flex-1 h-10 px-4 rounded-full bg-white/70 text-xs font-medium text-zinc-500 flex items-center justify-center gap-1.5">
+            <div className="text-xs font-medium text-zinc-400 flex items-center gap-1 py-1">
               <Check className="w-3.5 h-3.5 text-emerald-500" />
               <span>All past events shown</span>
             </div>
@@ -1512,7 +1557,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
             <button
               type="button"
               onClick={handleHideOldEvents}
-              className="h-10 px-4 rounded-full bg-[#141416] text-[#FFEA00] text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs active:scale-95 transition cursor-pointer"
+              className="text-xs font-semibold text-zinc-500 hover:text-zinc-800 flex items-center gap-1 transition cursor-pointer bg-transparent py-1 px-1.5"
             >
               <EyeOff className="w-3.5 h-3.5" />
               <span>Hide Old</span>
