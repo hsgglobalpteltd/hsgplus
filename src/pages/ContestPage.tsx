@@ -565,16 +565,10 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
   return (
     <div className="w-full px-5 pt-0.5 pb-8 font-primary">
-      {/* Top Header */}
+      {/* Top Header Row (Countdown Bar) */}
       <div className="flex items-center justify-between min-h-[36px] py-0.5">
-        <button
-          type="button"
-          onClick={onBack}
-          title="Back"
-          className="w-9 h-9 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-95 transition shrink-0"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
+        {/* Placeholder space for the single fluid back button located in the fixed header */}
+        <div className="w-9 h-9 shrink-0" aria-hidden="true" />
         {countdownText && (
           <div className="flex items-center gap-1.5 text-xs font-bold text-[#141416]">
             <span>{countdownText}</span>

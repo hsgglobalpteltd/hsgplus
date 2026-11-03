@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
+  ArrowLeft,
   Calendar,
   Check,
   Flame,
@@ -96,6 +97,9 @@ const HsgMobileShell: React.FC = () => {
     }
     if (route === 'events' && newRoute !== 'events' && mainScrollRef.current) {
       eventsScrollPosRef.current = mainScrollRef.current.scrollTop;
+    }
+    if (newRoute !== 'contest') {
+      setIsContestScrolled(false);
     }
     setRoute(newRoute);
     try {
@@ -250,6 +254,22 @@ const HsgMobileShell: React.FC = () => {
   // Dynamic Bottom Nav Button (Shop vs Home)
   const [isShopInView, setIsShopInView] = useState<boolean>(false);
 
+  // Contest Header Scroll State (fades back arrow in header and hides streak button on scroll)
+  const [isContestScrolled, setIsContestScrolled] = useState<boolean>(false);
+  const [hasContestUserScrolled, setHasContestUserScrolled] = useState<boolean>(false);
+
+  const handleContestBack = () => {
+    setContestAutoScroll(false);
+    setIsContestScrolled(false);
+    setHasContestUserScrolled(false);
+    if (contestBackRoute === 'events') {
+      setContestBackRoute('home');
+      navigateTo('events');
+    } else {
+      navigateTo('home');
+    }
+  };
+
   // Scroll-Orbiting "SNAP & EARN" Badge State (Option A: 1:1 scroll orbit + Behavior 2: magnetic snap-back)
   const [badgeRotation, setBadgeRotation] = useState<number>(0);
   const [isScrolling, setIsScrolling] = useState<boolean>(false);
@@ -262,6 +282,17 @@ const HsgMobileShell: React.FC = () => {
     // 1. Calculate Orbit Rotation from Scroll (Anchored to gesture start so it always begins from 12 o'clock)
     if (mainScrollRef.current) {
       const currentScrollTop = mainScrollRef.current.scrollTop;
+
+      // Track Contest page scroll for fading header back button & hiding streak pill
+      if (route === 'contest') {
+        const scrolled = currentScrollTop > 20;
+        setIsContestScrolled(scrolled);
+        if (scrolled && !hasContestUserScrolled) {
+          setHasContestUserScrolled(true);
+        }
+      } else if (isContestScrolled) {
+        setIsContestScrolled(false);
+      }
 
       // Start of a new scroll gesture after resting at 12 o'clock
       if (!isScrollingRef.current || scrollAnchorRef.current === null) {
@@ -378,6 +409,10 @@ const HsgMobileShell: React.FC = () => {
     setIsScrolling(false);
     if (scrollTimeoutRef.current) {
       window.clearTimeout(scrollTimeoutRef.current);
+    }
+    if (route !== 'contest') {
+      setIsContestScrolled(false);
+      setHasContestUserScrolled(false);
     }
     if (route === 'home') {
       if (mainScrollRef.current) {
@@ -525,22 +560,57 @@ const HsgMobileShell: React.FC = () => {
 
         {/* FIXED TOP HEADER */}
         <header className="w-full h-15 px-5 flex items-center justify-between shrink-0 select-none">
-          <div className="flex items-center text-left">
+          <div className="flex items-center text-left gap-2">
             <HsgLogo size="md" darkText />
+
+            {/* SINGLE CONTEST FLUID BACK BUTTON (Only active on contest route) */}
+            {route === 'contest' && (
+              <div
+                className={`flex items-center ${
+                  !hasContestUserScrolled
+                    ? '-translate-x-[68px] translate-y-[48px] scale-[1.12]'
+                    : isContestScrolled
+                    ? 'animate-contest-dock-up'
+                    : 'animate-contest-drop-back'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={handleContestBack}
+                  title="Back"
+                  className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer shrink-0"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Top-Right: Weekly App Open Streak Button + Profile / Login Button */}
-          <div className="flex items-center gap-2">
-            {/* Clickable Weekly Streak Button */}
-            <button
-              type="button"
-              onClick={() => requireAuth(handleOpenStreakPopup)}
-              title={`Weekly App Streak: ${weeklyStreak} Weeks`}
-              className="h-9 px-3 rounded-full bg-white/85 text-[#141416] text-xs font-extrabold flex items-center gap-1 shadow-2xs active:scale-95 transition select-none cursor-pointer"
+          <div className="flex items-center gap-2 relative isolate">
+            {/* Clickable Weekly Streak Button: Strictly BEHIND profile button (z-0) */}
+            <div
+              style={{ zIndex: 0 }}
+              className={`flex items-center relative ${
+                route === 'contest'
+                  ? !hasContestUserScrolled
+                    ? 'opacity-100 scale-100'
+                    : isContestScrolled
+                    ? 'animate-liquid-merge pointer-events-none'
+                    : 'animate-liquid-unmerge'
+                  : 'opacity-100 scale-100'
+              }`}
             >
-              <Flame className="w-4 h-4 text-[#EC008C] fill-[#EC008C]" />
-              <span>{weeklyStreak}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => requireAuth(handleOpenStreakPopup)}
+                title={`Weekly App Streak: ${weeklyStreak} Weeks`}
+                className="h-9 px-3 rounded-full bg-white text-[#141416] text-xs font-extrabold flex items-center gap-1 shadow-2xs active:scale-95 transition select-none cursor-pointer shrink-0"
+              >
+                <Flame className="w-4 h-4 text-[#EC008C] fill-[#EC008C]" />
+                <span>{weeklyStreak}</span>
+              </button>
+            </div>
 
             <button
               type="button"
@@ -552,11 +622,18 @@ const HsgMobileShell: React.FC = () => {
                 }
               }}
               aria-label={isAuthenticated ? 'Open Account' : 'Log In'}
-              className={`h-9 px-3.5 rounded-full flex items-center gap-1.5 transition shadow-2xs font-bold text-xs cursor-pointer ${
+              style={{ zIndex: 20 }}
+              className={`h-9 px-3.5 rounded-full flex items-center gap-1.5 transition shadow-2xs font-bold text-xs cursor-pointer relative ${
+                route === 'contest' && hasContestUserScrolled
+                  ? isContestScrolled
+                    ? 'animate-profile-absorb'
+                    : 'animate-profile-release'
+                  : ''
+              } ${
                 route === 'account'
                   ? 'bg-[#141416] text-[#FFEA00]'
                   : isAuthenticated
-                  ? 'bg-white/85 text-[#141416]'
+                  ? 'bg-white text-[#141416]'
                   : 'bg-[#141416] text-white'
               }`}
             >
@@ -647,15 +724,7 @@ const HsgMobileShell: React.FC = () => {
             <ContestPage
               initialContestId={selectedContestId}
               autoScrollToContent={contestAutoScroll}
-              onBack={() => {
-                setContestAutoScroll(false);
-                if (contestBackRoute === 'events') {
-                  setContestBackRoute('home');
-                  navigateTo('events');
-                } else {
-                  navigateTo('home');
-                }
-              }}
+              onBack={handleContestBack}
               onNavigateToEvent={(eventId) => {
                 if (eventId) setSelectedEventId(eventId);
                 setEventBackRoute('contest');
@@ -702,105 +771,107 @@ const HsgMobileShell: React.FC = () => {
           )}
         </main>
 
-        {/* FIXED 3-ITEM MODERN BOTTOM BAR */}
-        <nav className="w-full h-18 px-6 bg-white/95 backdrop-blur-md border-t border-zinc-200/80 grid grid-cols-3 items-center shrink-0 relative z-20">
-          <button
-            type="button"
-            onClick={handleHomeShopClick}
-            className="h-full flex flex-col items-center justify-center gap-1 transition cursor-pointer text-[#141416] font-semibold"
-          >
-            {route === 'home' ? (
-              isShopInView ? (
-                <>
-                  <Home className="w-5 h-5 transition-transform duration-200" />
-                  <span className="text-[11px]">Home</span>
-                </>
-              ) : (
-                <>
-                  <ShoppingBag className="w-5 h-5 transition-transform duration-200" />
-                  <span className="text-[11px]">Shop</span>
-                </>
-              )
-            ) : (
-              <>
-                <Home className="w-5 h-5" />
-                <span className="text-[11px]">Home</span>
-              </>
-            )}
-          </button>
-
-          <div className="flex items-center justify-center relative">
+        {/* FIXED 3-ITEM MODERN BOTTOM BAR (Hidden on Contest page to focus user purely on contest entry) */}
+        {route !== 'contest' && (
+          <nav className="w-full h-18 px-6 bg-white/95 backdrop-blur-md border-t border-zinc-200/80 grid grid-cols-3 items-center shrink-0 relative z-20 animate-in fade-in duration-150">
             <button
               type="button"
-              onClick={() => requireAuth(() => navigateTo('snap'))}
-              aria-label="Snap Receipt for Cashback"
-              className="relative flex items-center justify-center -translate-y-5 active:scale-95 transition cursor-pointer shrink-0 group select-none"
+              onClick={handleHomeShopClick}
+              className="h-full flex flex-col items-center justify-center gap-1 transition cursor-pointer text-[#141416] font-semibold"
             >
-              {/* Circular Dark Charcoal Button with White Receipt Icon (Matches other menu items) */}
-              <div className="w-14 h-14 rounded-full bg-[#141416] text-white flex items-center justify-center shadow-lg shadow-black/15 group-active:scale-95 transition">
-                <ReceiptText className="w-6 h-6 stroke-[2]" />
-              </div>
-
-              {/* Orbiting Badge Container: Rotates around center of the 56px button */}
-              <div
-                className="absolute inset-0 pointer-events-none z-30"
-                style={{
-                  transform: `rotate(${badgeRotation}deg)`,
-                  transformOrigin: '28px 28px',
-                  transition: isScrolling
-                    ? 'none'
-                    : 'transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1)',
-                  willChange: 'transform',
-                }}
-              >
-                {/* Curved Orbiting Text */}
-                <svg
-                  className="absolute -top-[14px] left-1/2 -translate-x-1/2 overflow-visible"
-                  width="80"
-                  height="44"
-                  viewBox="0 0 80 44"
-                >
-                  <defs>
-                    <path
-                      id="snap-earn-curve"
-                      d="M 5 42 A 35 35 0 0 1 75 42"
-                      fill="none"
-                    />
-                  </defs>
-                  {/* Curved "Scan Receipt & Earn Reward" Text */}
-                  <text
-                    fill="#141416"
-                    fontSize="6.8"
-                    fontWeight="700"
-                    letterSpacing="0.02em"
-                    dominantBaseline="central"
-                  >
-                    <textPath
-                      href="#snap-earn-curve"
-                      startOffset="50%"
-                      textAnchor="middle"
-                    >
-                      Scan Receipt &amp; Earn Reward
-                    </textPath>
-                  </text>
-                </svg>
-              </div>
+              {route === 'home' ? (
+                isShopInView ? (
+                  <>
+                    <Home className="w-5 h-5 transition-transform duration-200" />
+                    <span className="text-[11px]">Home</span>
+                  </>
+                ) : (
+                  <>
+                    <ShoppingBag className="w-5 h-5 transition-transform duration-200" />
+                    <span className="text-[11px]">Shop</span>
+                  </>
+                )
+              ) : (
+                <>
+                  <Home className="w-5 h-5" />
+                  <span className="text-[11px]">Home</span>
+                </>
+              )}
             </button>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setEventBackRoute('events');
-              setSelectedEventId(null);
-              navigateTo('events');
-            }}
-            className="h-full flex flex-col items-center justify-center gap-1 transition cursor-pointer text-[#141416] font-semibold"
-          >
-            <Calendar className="w-5 h-5" />
-            <span className="text-[11px]">Events</span>
-          </button>
-        </nav>
+            <div className="flex items-center justify-center relative">
+              <button
+                type="button"
+                onClick={() => requireAuth(() => navigateTo('snap'))}
+                aria-label="Snap Receipt for Cashback"
+                className="relative flex items-center justify-center -translate-y-5 active:scale-95 transition cursor-pointer shrink-0 group select-none"
+              >
+                {/* Circular Dark Charcoal Button with White Receipt Icon (Matches other menu items) */}
+                <div className="w-14 h-14 rounded-full bg-[#141416] text-white flex items-center justify-center shadow-lg shadow-black/15 group-active:scale-95 transition">
+                  <ReceiptText className="w-6 h-6 stroke-[2]" />
+                </div>
+
+                {/* Orbiting Badge Container: Rotates around center of the 56px button */}
+                <div
+                  className="absolute inset-0 pointer-events-none z-30"
+                  style={{
+                    transform: `rotate(${badgeRotation}deg)`,
+                    transformOrigin: '28px 28px',
+                    transition: isScrolling
+                      ? 'none'
+                      : 'transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1)',
+                    willChange: 'transform',
+                  }}
+                >
+                  {/* Curved Orbiting Text */}
+                  <svg
+                    className="absolute -top-[14px] left-1/2 -translate-x-1/2 overflow-visible"
+                    width="80"
+                    height="44"
+                    viewBox="0 0 80 44"
+                  >
+                    <defs>
+                      <path
+                        id="snap-earn-curve"
+                        d="M 5 42 A 35 35 0 0 1 75 42"
+                        fill="none"
+                      />
+                    </defs>
+                    {/* Curved "Scan Receipt & Earn Reward" Text */}
+                    <text
+                      fill="#141416"
+                      fontSize="6.8"
+                      fontWeight="700"
+                      letterSpacing="0.02em"
+                      dominantBaseline="central"
+                    >
+                      <textPath
+                        href="#snap-earn-curve"
+                        startOffset="50%"
+                        textAnchor="middle"
+                      >
+                        Scan Receipt &amp; Earn Reward
+                      </textPath>
+                    </text>
+                  </svg>
+                </div>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setEventBackRoute('events');
+                setSelectedEventId(null);
+                navigateTo('events');
+              }}
+              className="h-full flex flex-col items-center justify-center gap-1 transition cursor-pointer text-[#141416] font-semibold"
+            >
+              <Calendar className="w-5 h-5" />
+              <span className="text-[11px]">Events</span>
+            </button>
+          </nav>
+        )}
 
         {/* WHATSAPP LOGIN MODAL OVERLAY */}
         {showLoginModal && (
