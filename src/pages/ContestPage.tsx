@@ -596,8 +596,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
             )}
           </div>
 
-          {/* 3. INSIDE DESCRIPTION & INSTRUCTION (ACCORDION COLLAPSIBLE) */}
-          {isAuthenticated && (contest.inside_description || contest.inside_instruction) && (
+          {/* 3. INSIDE DESCRIPTION & INSTRUCTION (ACCORDION COLLAPSIBLE: Visible to everyone so visitors can read details) */}
+          {(contest.inside_description || contest.inside_instruction) && (
             <div className="w-full p-4 rounded-3xl bg-white shadow-xs space-y-3">
               {contest.inside_description && (
                 <div>

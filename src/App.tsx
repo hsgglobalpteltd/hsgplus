@@ -285,7 +285,7 @@ const HsgMobileShell: React.FC = () => {
 
       // Track Contest page scroll for fading header back button & hiding streak pill
       if (route === 'contest') {
-        const scrolled = currentScrollTop > 20;
+        const scrolled = currentScrollTop > 2;
         setIsContestScrolled(scrolled);
         if (scrolled && !hasContestUserScrolled) {
           setHasContestUserScrolled(true);
@@ -568,7 +568,7 @@ const HsgMobileShell: React.FC = () => {
               <div
                 className={`flex items-center ${
                   !hasContestUserScrolled
-                    ? '-translate-x-[68px] translate-y-[48px] scale-[1.12]'
+                    ? '-translate-x-[68px] translate-y-[48px]'
                     : isContestScrolled
                     ? 'animate-contest-dock-up'
                     : 'animate-contest-drop-back'
@@ -578,16 +578,42 @@ const HsgMobileShell: React.FC = () => {
                   type="button"
                   onClick={handleContestBack}
                   title="Back"
-                  className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer shrink-0"
+                  className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer shrink-0 overflow-hidden"
                 >
-                  <ArrowLeft className="w-4 h-4" />
+                  <span
+                    className={
+                      hasContestUserScrolled ? 'animate-contest-icon-fade flex items-center justify-center' : 'flex items-center justify-center'
+                    }
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </span>
                 </button>
               </div>
             )}
           </div>
 
+          {/* SVG Gooey Filter for Authentic Fluid Metaball Necking / Coalescence */}
+          <svg className="absolute w-0 h-0 pointer-events-none" aria-hidden="true">
+            <defs>
+              <filter id="metaball-goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+                <feColorMatrix
+                  in="blur"
+                  mode="matrix"
+                  values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -8"
+                  result="goo"
+                />
+                <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+              </filter>
+            </defs>
+          </svg>
+
           {/* Top-Right: Weekly App Open Streak Button + Profile / Login Button */}
-          <div className="flex items-center gap-2 relative isolate">
+          <div
+            className={`flex items-center gap-2 relative isolate ${
+              route === 'contest' ? 'gooey-filter-container' : ''
+            }`}
+          >
             {/* Clickable Weekly Streak Button: Strictly BEHIND profile button (z-0) */}
             <div
               style={{ zIndex: 0 }}
