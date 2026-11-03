@@ -254,7 +254,7 @@ const HsgMobileShell: React.FC = () => {
   // Dynamic Bottom Nav Button (Shop vs Home)
   const [isShopInView, setIsShopInView] = useState<boolean>(false);
 
-  // Contest Header Scroll State (fades back arrow in header and hides streak button on scroll)
+  // Contest & Event Detail Header Scroll State (fades back arrow in header and hides streak button on scroll)
   const [isContestScrolled, setIsContestScrolled] = useState<boolean>(false);
   const [hasContestUserScrolled, setHasContestUserScrolled] = useState<boolean>(false);
 
@@ -267,6 +267,18 @@ const HsgMobileShell: React.FC = () => {
       navigateTo('events');
     } else {
       navigateTo('home');
+    }
+  };
+
+  const handleEventDetailBack = () => {
+    setIsContestScrolled(false);
+    setHasContestUserScrolled(false);
+    if (eventBackRoute === 'contest') {
+      setEventBackRoute('events');
+      setSelectedEventId(null);
+      navigateTo('contest');
+    } else {
+      setSelectedEventId(null);
     }
   };
 
@@ -283,8 +295,8 @@ const HsgMobileShell: React.FC = () => {
     if (mainScrollRef.current) {
       const currentScrollTop = mainScrollRef.current.scrollTop;
 
-      // Track Contest page scroll for fading header back button & hiding streak pill
-      if (route === 'contest') {
+      // Track Contest & Event Detail page scroll for fading header back button & hiding streak pill
+      if (route === 'contest' || (route === 'events' && Boolean(selectedEventId))) {
         const scrolled = currentScrollTop > 2;
         setIsContestScrolled(scrolled);
         if (scrolled && !hasContestUserScrolled) {
@@ -410,7 +422,7 @@ const HsgMobileShell: React.FC = () => {
     if (scrollTimeoutRef.current) {
       window.clearTimeout(scrollTimeoutRef.current);
     }
-    if (route !== 'contest') {
+    if (route !== 'contest' && !(route === 'events' && Boolean(selectedEventId))) {
       setIsContestScrolled(false);
       setHasContestUserScrolled(false);
     }
@@ -563,8 +575,8 @@ const HsgMobileShell: React.FC = () => {
           <div className="flex items-center text-left gap-2">
             <HsgLogo size="md" darkText />
 
-            {/* SINGLE CONTEST FLUID BACK BUTTON (Only active on contest route) */}
-            {route === 'contest' && (
+            {/* SINGLE FLUID BACK BUTTON (Active on contest route or event detail view) */}
+            {(route === 'contest' || (route === 'events' && Boolean(selectedEventId))) && (
               <div
                 className={`flex items-center ${
                   !hasContestUserScrolled
@@ -576,7 +588,7 @@ const HsgMobileShell: React.FC = () => {
               >
                 <button
                   type="button"
-                  onClick={handleContestBack}
+                  onClick={route === 'contest' ? handleContestBack : handleEventDetailBack}
                   title="Back"
                   className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer shrink-0 overflow-hidden"
                 >
@@ -611,14 +623,16 @@ const HsgMobileShell: React.FC = () => {
           {/* Top-Right: Weekly App Open Streak Button + Profile / Login Button */}
           <div
             className={`flex items-center gap-2 relative isolate ${
-              route === 'contest' ? 'gooey-filter-container' : ''
+              route === 'contest' || (route === 'events' && Boolean(selectedEventId))
+                ? 'gooey-filter-container'
+                : ''
             }`}
           >
             {/* Clickable Weekly Streak Button: Strictly BEHIND profile button (z-0) */}
             <div
               style={{ zIndex: 0 }}
               className={`flex items-center relative ${
-                route === 'contest'
+                route === 'contest' || (route === 'events' && Boolean(selectedEventId))
                   ? !hasContestUserScrolled
                     ? 'opacity-100 scale-100'
                     : isContestScrolled
@@ -650,7 +664,8 @@ const HsgMobileShell: React.FC = () => {
               aria-label={isAuthenticated ? 'Open Account' : 'Log In'}
               style={{ zIndex: 20 }}
               className={`h-9 px-3.5 rounded-full flex items-center gap-1.5 transition shadow-2xs font-bold text-xs cursor-pointer relative ${
-                route === 'contest' && hasContestUserScrolled
+                (route === 'contest' || (route === 'events' && Boolean(selectedEventId))) &&
+                hasContestUserScrolled
                   ? isContestScrolled
                     ? 'animate-profile-absorb'
                     : 'animate-profile-release'
@@ -710,6 +725,11 @@ const HsgMobileShell: React.FC = () => {
               selectedEventId={selectedEventId}
               onSelectEvent={(id) => {
                 setSelectedEventId(id);
+                setIsContestScrolled(false);
+                setHasContestUserScrolled(false);
+                if (id && mainScrollRef.current) {
+                  mainScrollRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+                }
                 if (!id) {
                   setIsVenueScan(false);
                   setVenueToken(null);
@@ -721,6 +741,8 @@ const HsgMobileShell: React.FC = () => {
               }}
               onBackToSource={() => {
                 setSelectedEventId(null);
+                setIsContestScrolled(false);
+                setHasContestUserScrolled(false);
                 setIsVenueScan(false);
                 setVenueToken(null);
                 if (eventBackRoute === 'contest') {
@@ -797,8 +819,8 @@ const HsgMobileShell: React.FC = () => {
           )}
         </main>
 
-        {/* FIXED 3-ITEM MODERN BOTTOM BAR (Hidden on Contest page to focus user purely on contest entry) */}
-        {route !== 'contest' && (
+        {/* FIXED 3-ITEM MODERN BOTTOM BAR (Hidden on Contest & Event Detail pages to focus user purely on content) */}
+        {route !== 'contest' && !(route === 'events' && Boolean(selectedEventId)) && (
           <nav className="w-full h-18 px-6 bg-white/95 backdrop-blur-md border-t border-zinc-200/80 grid grid-cols-3 items-center shrink-0 relative z-20 animate-in fade-in duration-150">
             <button
               type="button"

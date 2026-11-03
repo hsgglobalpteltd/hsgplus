@@ -512,7 +512,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
     })();
 
     return (
-      <div className="w-full px-5 pt-2 pb-6 space-y-4">
+      <div className="w-full px-5 pt-0.5 pb-8 font-primary">
         {/* Fee Payment Selection Modal */}
         {pendingPaymentEvent && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-5">
@@ -601,30 +601,19 @@ export const EventsPage: React.FC<EventsPageProps> = ({
           </div>
         )}
 
-        {/* TOP BAR: Back button & Category badge */}
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => {
-              stopCameraScan();
-              setShowCheckInModal(false);
-              if (onBackToSource) {
-                onBackToSource();
-              } else {
-                onSelectEvent(null);
-              }
-            }}
-            className="h-9 px-3.5 rounded-full bg-white text-[#141416] text-xs font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition"
-          >
-            <ArrowLeft className="w-4 h-4" /> {backLabel ? `Back to ${backLabel}` : 'All Events'}
-          </button>
-          <span className="text-xs font-bold text-[#141416]">
-            {activeEvent.distance_or_format &&
-            activeEvent.distance_or_format.trim().toLowerCase() !==
-              activeEvent.category.trim().toLowerCase()
-              ? `${activeEvent.category} • ${activeEvent.distance_or_format}`
-              : activeEvent.category}
-          </span>
+        {/* Top Header Row (Category / Format text on right, placeholder space on left for fluid back button) */}
+        <div className="flex items-center justify-between min-h-[36px] py-0.5">
+          {/* Placeholder space for the single fluid back button located in the fixed header */}
+          <div className="w-9 h-9 shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-1.5 text-xs font-bold text-[#141416]">
+            <span>
+              {activeEvent.distance_or_format &&
+              activeEvent.distance_or_format.trim().toLowerCase() !==
+                activeEvent.category.trim().toLowerCase()
+                ? `${activeEvent.category} • ${activeEvent.distance_or_format}`
+                : activeEvent.category}
+            </span>
+          </div>
         </div>
 
         {/* WALK-IN VENUE SCAN PROMPT (if user scanned venue poster) */}
@@ -733,21 +722,23 @@ export const EventsPage: React.FC<EventsPageProps> = ({
             );
           })()}
 
+        {/* Header Block: Edge-to-Edge Event Hero Image */}
+        <div className="-mx-5 w-[calc(100%+2.5rem)] overflow-hidden mt-1">
+          {activeEvent.image_url ? (
+            <img
+              src={activeEvent.image_url}
+              alt={activeEvent.title}
+              className="w-full h-auto block m-0 p-0 rounded-none select-none object-contain"
+            />
+          ) : (
+            <div className="w-full aspect-[16/9] bg-zinc-100 flex items-center justify-center text-zinc-400 text-xs font-semibold">
+              No Event Image
+            </div>
+          )}
+        </div>
+
         {/* MAIN EVENT DETAIL CARD */}
-        <div className="w-full rounded-3xl bg-white overflow-hidden shadow-xs">
-          <div className="w-full bg-zinc-100 overflow-hidden flex items-center justify-center">
-            {activeEvent.image_url ? (
-              <img
-                src={activeEvent.image_url}
-                alt={activeEvent.title}
-                className="w-full h-auto max-h-[480px] object-contain block select-none"
-              />
-            ) : (
-              <div className="w-full aspect-[4/3] flex items-center justify-center text-zinc-400 text-xs font-semibold">
-                No Event Image
-              </div>
-            )}
-          </div>
+        <div className="w-full rounded-3xl bg-white overflow-hidden shadow-xs mt-4">
           <div className="p-5">
             <div className="text-xs font-semibold text-[#EC008C]">
               {formatDate(activeEvent.date_timestamp)} • {activeEvent.time_label}
@@ -889,7 +880,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     if (onBackToSource) onBackToSource();
                     else onSelectEvent(null);
                   }}
-                  className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                  className="w-full py-2.5 text-center text-xs font-bold text-zinc-500 hover:text-zinc-800 active:scale-98 transition cursor-pointer block"
                 >
                   {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                 </button>
@@ -930,7 +921,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     if (onBackToSource) onBackToSource();
                     else onSelectEvent(null);
                   }}
-                  className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                  className="w-full py-2.5 text-center text-xs font-bold text-zinc-500 hover:text-zinc-800 active:scale-98 transition cursor-pointer block"
                 >
                   {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                 </button>
@@ -949,7 +940,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     <p className="text-xs text-emerald-700 mt-0.5 leading-relaxed">
                       {isCheckInOpen
                         ? '● Check-in is now open! Please tap Enter Event below to check in.'
-                        : `Check-in opens 30 mins before event (at ${new Date(eventTimes.checkInOpen).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })})`}
+                        : `Check-in opens 30 mins before event (${formatDate(activeEvent.date_timestamp)} at ${new Date(eventTimes.checkInOpen).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })})`}
                     </p>
                   </div>
                 </div>
@@ -970,12 +961,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                       : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                   }`}
                 >
-                  <span>🚀</span>
-                  <span>
-                    {isCheckInOpen
-                      ? 'Enter Event'
-                      : `Enter Event (Opens at ${new Date(eventTimes.checkInOpen).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })})`}
-                  </span>
+                  <span>Enter Event</span>
                 </button>
 
                 {onBackToSource && backLabel && (
@@ -994,7 +980,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                     if (onBackToSource) onBackToSource();
                     else onSelectEvent(null);
                   }}
-                  className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                  className="w-full py-2.5 text-center text-xs font-bold text-zinc-500 hover:text-zinc-800 active:scale-98 transition cursor-pointer block"
                 >
                   {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                 </button>
@@ -1028,7 +1014,6 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                         : 'bg-[#FFEA00] text-[#141416] shadow-sm active:scale-95 cursor-pointer ring-2 ring-[#FFEA00]/40'
                     }`}
                   >
-                    <span>🚀</span>
                     <span>
                       {isFull
                         ? 'Event Full'
@@ -1044,7 +1029,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                       if (onBackToSource) onBackToSource();
                       else onSelectEvent(null);
                     }}
-                    className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                    className="w-full py-2.5 text-center text-xs font-bold text-zinc-500 hover:text-zinc-800 active:scale-98 transition cursor-pointer block"
                   >
                     {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                   </button>
@@ -1099,7 +1084,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                       if (onBackToSource) onBackToSource();
                       else onSelectEvent(null);
                     }}
-                    className="w-full h-11 rounded-full bg-[#F6F6F9] text-zinc-700 font-bold text-xs active:scale-95 transition cursor-pointer"
+                    className="w-full py-2.5 text-center text-xs font-bold text-zinc-500 hover:text-zinc-800 active:scale-98 transition cursor-pointer block"
                   >
                     {backLabel ? `Back to ${backLabel}` : 'Back to All Events'}
                   </button>

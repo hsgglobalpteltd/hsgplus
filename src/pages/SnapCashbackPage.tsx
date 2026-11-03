@@ -891,8 +891,8 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                 )}
               </div>
 
-              {/* Exact Bell-Curved Bottom Scoop / Tab with Ultra-Smooth Organic Curve on All Sides */}
-              <div className="absolute left-1/2 -translate-x-1/2 -bottom-[19px] z-20 flex flex-col items-center">
+              {/* Half-Circle Organic Bottom Scoop / Tab */}
+              <div className="absolute left-1/2 -translate-x-1/2 -bottom-[21px] z-20 flex flex-col items-center">
                 <button
                   type="button"
                   onClick={toggleMilestones}
@@ -900,33 +900,33 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                   aria-label={isMilestonesExpanded ? 'Collapse milestones' : 'Expand milestones'}
                 >
                   {/* White background block mask to erase the parent card's bottom border under the curve */}
-                  <div className="absolute -top-[2px] left-[6px] right-[6px] h-[4px] bg-white pointer-events-none z-10" />
+                  <div className="absolute -top-[2px] left-[5px] right-[5px] h-[4px] bg-white pointer-events-none z-10" />
 
-                  {/* Ultra-rounded organic scoop: 80px wide by 20px high with generous, continuous curve transitions */}
+                  {/* Half-circle organic scoop: 64px wide by 22px high with continuous rounded arc */}
                   <svg
-                    width="80"
-                    height="20"
-                    viewBox="0 0 80 20"
+                    width="64"
+                    height="22"
+                    viewBox="0 0 64 22"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
                     className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.03)] relative z-20"
                   >
                     {/* Seamless White Fill */}
                     <path
-                      d="M 0 0 C 14 0, 18 19, 30 19 C 36 19, 44 19, 50 19 C 62 19, 66 0, 80 0 Z"
+                      d="M 0 0 C 12 0, 16 22, 32 22 C 48 22, 52 0, 64 0 Z"
                       fill="#FFFFFF"
                     />
                     {/* Smooth hairline outline trace on the curve only */}
                     <path
-                      d="M 0 0 C 14 0, 18 19, 30 19 C 36 19, 44 19, 50 19 C 62 19, 66 0, 80 0"
+                      d="M 0 0 C 12 0, 16 22, 32 22 C 48 22, 52 0, 64 0"
                       stroke="#E4E4E7"
                       strokeWidth="1"
                       strokeLinecap="round"
                       fill="none"
                     />
                   </svg>
-                  {/* Chevron Icon centered inside the scoop */}
-                  <div className="absolute inset-0 flex items-center justify-center pt-0.5 pointer-events-none z-30">
+                  {/* Chevron Icon centered inside the half-circle scoop */}
+                  <div className="absolute inset-0 flex items-center justify-center pt-1 pointer-events-none z-30">
                     <ChevronDown
                       className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 group-hover:text-zinc-800 ${
                         isMilestonesExpanded ? 'rotate-180' : ''
