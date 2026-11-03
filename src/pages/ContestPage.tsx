@@ -808,26 +808,19 @@ export const ContestPage: React.FC<ContestPageProps> = ({
             </div>
           ) : !isAuthenticated ? (
             /* ==========================================================
-               GATE: USER NOT LOGGED IN -> HIDE ALL WORDS/STATES AND SHOW LOGIN PROMPT
+               SOFT GATE: USER NOT LOGGED IN -> CLEAN "SUBMIT CONTEST" ACTION BUTTON
                ========================================================== */
-            <div className="w-full p-6 rounded-3xl bg-white shadow-xs text-center space-y-4 animate-in fade-in duration-200">
-              <div className="w-14 h-14 rounded-full bg-zinc-100 text-zinc-700 flex items-center justify-center mx-auto">
-                <Lock className="w-7 h-7" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-extrabold text-[#141416]">
-                  Log In to Participate
-                </h3>
-                <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                  Please log in with your account to view contest details and submit your entry.
-                </p>
-              </div>
+            <div className="w-full pt-1 pb-2">
               <button
                 type="button"
                 onClick={() => openLoginModal()}
-                className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full h-12 rounded-full bg-[#EC008C] hover:bg-[#d6007e] text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Log In to Continue</span>
+                <span>
+                  {Number(contest.reward_points || contest.submission_limits?.points_per_submission || 0) > 0
+                    ? `Submit Contest (+${contest.reward_points || contest.submission_limits?.points_per_submission} pts)`
+                    : 'Submit Contest'}
+                </span>
               </button>
             </div>
           ) : cd?.isEnded ? (

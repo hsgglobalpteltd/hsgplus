@@ -1099,6 +1099,14 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
                   data.user
                 );
                 showToast(`Welcome back, ${data.user.nickname}!`);
+
+                // Restore user to exact last session page (e.g. contest?id=xxx)
+                if (data.session_page && typeof window !== 'undefined') {
+                  const targetPage = String(data.session_page).replace('#', '').trim();
+                  if (targetPage && targetPage !== 'home') {
+                    window.location.hash = targetPage;
+                  }
+                }
               } else if (data.error) {
                 showToast(data.error);
               }

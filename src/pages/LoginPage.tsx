@@ -221,6 +221,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
           ? window.location.origin
           : 'https://plus.hsgglobal.sg';
 
+      // Extract current page (e.g. "contest?id=xxx" or "events?id=yyy" or "home")
+      const currentHash =
+        typeof window !== 'undefined'
+          ? (window.location.hash || '').replace('#', '').trim()
+          : '';
+      const sessionPage = currentHash || 'home';
+
       const res = await fetch(`${WORKER_URL}/api/hsg-app/auth/whatsapp/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -228,6 +235,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
           phone: fullPhone,
           terms_accepted: withTerms,
           app_url: currentOrigin,
+          session_page: sessionPage,
         }),
       });
 
