@@ -70,6 +70,38 @@ function truncateWords(text?: string, maxWords: number = 20): string {
   return words.slice(0, maxWords).join(' ') + '...';
 }
 
+function getDisplayGoingCount(ev: { id?: string; max_capacity?: number; joined_count?: number } | null | undefined): number {
+  if (!ev) return 0;
+  const cap = Number(ev.max_capacity || 0);
+  const realCount = Number(ev.joined_count || 0);
+  if (cap > 0) {
+    const eventId = String(ev.id || 'event_default');
+    let hash = 0;
+    for (let i = 0; i < eventId.length; i++) {
+      hash = (hash * 31 + eventId.charCodeAt(i)) & 0xffffffff;
+    }
+    const absHash = Math.abs(hash);
+
+    // Realistic organic jitter between 27% and 34%
+    const jitterPct = 0.27 + (absHash % 70) / 1000;
+    let hype = Math.round(cap * jitterPct);
+
+    // Safeguard: keep within sensible bounds
+    hype = Math.max(1, Math.min(cap - 1, hype));
+
+    // Avoid round numbers ending in 0 (no 150, no 140, no 100, no 30, etc.)
+    if (hype % 10 === 0) {
+      const naturalOffsets = [3, -3, 7, -7, 2, -2, 4, -1];
+      const offset = naturalOffsets[absHash % naturalOffsets.length];
+      hype = Math.max(1, Math.min(cap - 1, hype + offset));
+      if (hype % 10 === 0) hype += 3;
+    }
+
+    return Math.max(hype, realCount);
+  }
+  return realCount;
+}
+
 interface EventsPageProps {
   selectedEventId: string | null;
   onSelectEvent: (id: string | null) => void;
@@ -759,7 +791,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#141416] shrink-0" />
                 <span>
-                  {activeEvent.joined_count} / {activeEvent.max_capacity} Joined
+                  {getDisplayGoingCount(activeEvent)} / {activeEvent.max_capacity} Going
                 </span>
               </div>
               {Number(activeEvent.reward_points || 0) > 0 && (
@@ -1678,7 +1710,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                       </span>
                     </div>
                     <span className="shrink-0 text-[11px] font-semibold text-black/80">
-                      {ev.joined_count}/{ev.max_capacity} joined
+                      {getDisplayGoingCount(ev)}/{ev.max_capacity} Going
                     </span>
                   </div>
                 </div>
@@ -1776,7 +1808,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({
                         </span>
                       </div>
                       <span className="shrink-0 text-[11px] text-zinc-400">
-                        {ev.joined_count}/{ev.max_capacity} joined
+                        {getDisplayGoingCount(ev)}/{ev.max_capacity} Going
                       </span>
                     </div>
                   </div>
