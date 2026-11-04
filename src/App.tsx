@@ -125,9 +125,8 @@ const HsgMobileShell: React.FC = () => {
     if (route === 'events' && newRoute !== 'events' && mainScrollRef.current) {
       eventsScrollPosRef.current = mainScrollRef.current.scrollTop;
     }
-    if (newRoute !== 'contest') {
-      setIsContestScrolled(false);
-    }
+    setIsContestScrolled(false);
+    setHasContestUserScrolled(false);
     setRoute(newRoute);
     try {
       sessionStorage.setItem('hsg_active_route', newRoute);
@@ -222,9 +221,15 @@ const HsgMobileShell: React.FC = () => {
   // Dynamic Bottom Nav Button (Shop vs Home)
   const [isShopInView, setIsShopInView] = useState<boolean>(false);
 
-  // Contest & Event Detail Header Scroll State (fades back arrow in header and hides streak button on scroll)
+  // Contest, Event Detail, Account & Transactions Header Scroll State (fades back arrow in header and hides streak button on scroll)
   const [isContestScrolled, setIsContestScrolled] = useState<boolean>(false);
   const [hasContestUserScrolled, setHasContestUserScrolled] = useState<boolean>(false);
+
+  const isFluidHeaderRoute =
+    route === 'contest' ||
+    (route === 'events' && Boolean(selectedEventId)) ||
+    route === 'account' ||
+    route === 'transactions';
 
   const handleContestBack = () => {
     setContestAutoScroll(false);
@@ -250,6 +255,26 @@ const HsgMobileShell: React.FC = () => {
     }
   };
 
+  const handleFluidBack = (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsContestScrolled(false);
+    setHasContestUserScrolled(false);
+    if (route === 'contest') {
+      handleContestBack();
+    } else if (route === 'events') {
+      handleEventDetailBack();
+    } else if (route === 'transactions') {
+      navigateTo('account');
+    } else if (route === 'account') {
+      navigateTo('home');
+    } else {
+      navigateTo('home');
+    }
+  };
+
   // Scroll-Orbiting "SNAP & EARN" Badge State (Option A: 1:1 scroll orbit + Behavior 2: magnetic snap-back)
   const [badgeRotation, setBadgeRotation] = useState<number>(0);
   const [isScrolling, setIsScrolling] = useState<boolean>(false);
@@ -263,8 +288,8 @@ const HsgMobileShell: React.FC = () => {
     if (mainScrollRef.current) {
       const currentScrollTop = mainScrollRef.current.scrollTop;
 
-      // Track Contest & Event Detail page scroll for fading header back button & hiding streak pill
-      if (route === 'contest' || (route === 'events' && Boolean(selectedEventId))) {
+      // Track Contest, Event Detail, Account, and Transactions page scroll for docking header back button & merging streak pill
+      if (isFluidHeaderRoute) {
         const scrolled = currentScrollTop > 2;
         setIsContestScrolled(scrolled);
         if (scrolled && !hasContestUserScrolled) {
@@ -539,14 +564,14 @@ const HsgMobileShell: React.FC = () => {
         )}
 
         {/* FIXED TOP HEADER */}
-        <header className="w-full h-15 px-5 flex items-center justify-between shrink-0 select-none">
+        <header className="w-full h-15 px-5 flex items-center justify-between shrink-0 select-none relative z-40">
           <div className="flex items-center text-left gap-2">
             <HsgLogo size="md" darkText />
 
-            {/* SINGLE FLUID BACK BUTTON (Active on contest route or event detail view) */}
-            {(route === 'contest' || (route === 'events' && Boolean(selectedEventId))) && (
+            {/* SINGLE FLUID BACK BUTTON (Active on contest, event detail, account, transactions) */}
+            {isFluidHeaderRoute && (
               <div
-                className={`flex items-center ${
+                className={`flex items-center relative z-50 pointer-events-auto ${
                   !hasContestUserScrolled
                     ? '-translate-x-[68px] translate-y-[48px]'
                     : isContestScrolled
@@ -556,9 +581,9 @@ const HsgMobileShell: React.FC = () => {
               >
                 <button
                   type="button"
-                  onClick={route === 'contest' ? handleContestBack : handleEventDetailBack}
+                  onClick={handleFluidBack}
                   title="Back"
-                  className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer shrink-0 overflow-hidden"
+                  className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer shrink-0 overflow-hidden relative z-50 pointer-events-auto"
                 >
                   <span
                     className={
@@ -591,16 +616,14 @@ const HsgMobileShell: React.FC = () => {
           {/* Top-Right: Weekly App Open Streak Button + Profile / Login Button */}
           <div
             className={`flex items-center gap-2 relative isolate ${
-              route === 'contest' || (route === 'events' && Boolean(selectedEventId))
-                ? 'gooey-filter-container'
-                : ''
+              isFluidHeaderRoute ? 'gooey-filter-container' : ''
             }`}
           >
             {/* Clickable Weekly Streak Button: Strictly BEHIND profile button (z-0) */}
             <div
               style={{ zIndex: 0 }}
               className={`flex items-center relative ${
-                route === 'contest' || (route === 'events' && Boolean(selectedEventId))
+                isFluidHeaderRoute
                   ? !hasContestUserScrolled
                     ? 'opacity-100 scale-100'
                     : isContestScrolled
@@ -632,8 +655,7 @@ const HsgMobileShell: React.FC = () => {
               aria-label={isAuthenticated ? 'Open Account' : 'Log In'}
               style={{ zIndex: 20 }}
               className={`h-9 px-3.5 rounded-full flex items-center gap-1.5 transition shadow-2xs font-bold text-xs cursor-pointer relative ${
-                (route === 'contest' || (route === 'events' && Boolean(selectedEventId))) &&
-                hasContestUserScrolled
+                isFluidHeaderRoute && hasContestUserScrolled
                   ? isContestScrolled
                     ? 'animate-profile-absorb'
                     : 'animate-profile-release'
@@ -787,8 +809,8 @@ const HsgMobileShell: React.FC = () => {
           )}
         </main>
 
-        {/* FIXED 3-ITEM MODERN BOTTOM BAR (Hidden on Contest & Event Detail pages to focus user purely on content) */}
-        {route !== 'contest' && !(route === 'events' && Boolean(selectedEventId)) && (
+        {/* FIXED 3-ITEM MODERN BOTTOM BAR (Hidden on Contest, Event Detail, Account & Transactions pages) */}
+        {!isFluidHeaderRoute && (
           <nav className="w-full h-18 px-6 bg-white/95 backdrop-blur-md border-t border-zinc-200/80 grid grid-cols-3 items-center shrink-0 relative z-20 animate-in fade-in duration-150">
             <button
               type="button"

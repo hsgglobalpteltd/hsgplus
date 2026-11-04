@@ -571,26 +571,20 @@ export const SimpleTransactionList: React.FC<{
 };
 
 export const TransactionHistoryPage: React.FC<TransactionHistoryPageProps> = ({
-  onBack,
+  onBack: _onBack,
   initialTab = 'cashback',
   scrollContainerRef,
 }) => {
   return (
-    <div className="w-full px-5 pt-2 pb-6 space-y-4">
+    <div className="w-full px-5 pt-0.5 pb-8 space-y-4">
       {/* Header Row */}
-      <div className="relative flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          title="Back"
-          className="w-9 h-9 rounded-full bg-white/90 text-[#141416] flex items-center justify-center shadow-2xs active:scale-95 transition cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
+      <div className="relative flex items-center justify-between min-h-[36px] py-0.5">
+        {/* Placeholder space for the single fluid back button located in the fixed header */}
+        <div className="w-8 h-8 shrink-0" aria-hidden="true" />
         <span className="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-[#141416] pointer-events-none">
           Transaction History
         </span>
-        <div className="w-9 h-9" />
+        <div className="w-8 h-8 shrink-0" />
       </div>
 
       {/* 2-Tab Simple Transaction List with Bottom Scale & Pull-to-Load-More */}

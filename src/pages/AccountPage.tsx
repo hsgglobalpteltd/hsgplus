@@ -1512,21 +1512,21 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
   if (showPolicyView) {
     return (
-      <div className="w-full px-5 pt-2 pb-6 space-y-4 animate-in fade-in duration-200">
+      <div className="w-full px-5 pt-0.5 pb-6 space-y-4 animate-in fade-in duration-200">
         {/* Header Row */}
-        <div className="relative flex items-center justify-between">
+        <div className="relative flex items-center justify-between min-h-[36px] py-0.5">
           <button
             type="button"
             onClick={() => setShowPolicyView(false)}
             title="Back to Account"
-            className="w-9 h-9 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-95 transition cursor-pointer"
+            className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer relative z-50 pointer-events-auto shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 text-[#141416]" />
           </button>
-          <span className="text-sm font-bold text-[#141416] pointer-events-none">
+          <span className="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-[#141416] pointer-events-none">
             Terms &amp; Conditions
           </span>
-          <div className="w-9 h-9" />
+          <div className="w-8 h-8 shrink-0" />
         </div>
 
         {/* Content Card */}
@@ -1563,17 +1563,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   }
 
   return (
-    <div className="w-full px-5 pt-2 pb-6 space-y-5">
+    <div className="w-full px-5 pt-0.5 pb-6 space-y-5">
       {/* Header Row */}
-      <div className="relative flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          title="Back"
-          className="w-9 h-9 rounded-full bg-white/90 text-[#141416] flex items-center justify-center shadow-2xs active:scale-95 transition"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
+      <div className="relative flex items-center justify-between min-h-[36px] py-0.5">
+        {/* Placeholder space for the single fluid back button located in the fixed header */}
+        <div className="w-8 h-8 shrink-0" aria-hidden="true" />
         <span className="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-[#141416] pointer-events-none">
           Wallet & Account
         </span>
@@ -1582,12 +1576,12 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             type="button"
             onClick={logout}
             title="Sign Out"
-            className="w-9 h-9 rounded-full bg-white/90 text-zinc-600 flex items-center justify-center shadow-2xs active:scale-95 transition"
+            className="w-8 h-8 rounded-full bg-white text-[#141416] flex items-center justify-center shadow-2xs active:scale-90 transition-transform cursor-pointer shrink-0"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="w-4 h-4 text-[#141416]" />
           </button>
         ) : (
-          <div className="w-9 h-9" />
+          <div className="w-8 h-8 shrink-0" />
         )}
       </div>
 
