@@ -148,16 +148,22 @@ export const HomePage: React.FC<HomePageProps> = ({
     ? Number(db.user.wallet_balance || 0)
     : (isAuthenticated ? Number(db.user?.wallet_balance || 0) : MOCK_AVAILABLE_CASH);
 
+  const currentUserId =
+    db.user?.id ||
+    (typeof window !== 'undefined'
+      ? localStorage.getItem('hsg_auth_user_id') || ''
+      : '');
+
   const pendingCashFromTxs = React.useMemo(() => {
     return (db.transactions || [])
-      .filter((tx) => tx.status === 'pending')
+      .filter((tx) => tx.status === 'pending' && Boolean(currentUserId && tx.user_id === currentUserId))
       .reduce((sum, tx) => {
         const amt = Number(
           tx.amount_cashback ?? tx.net_cashback ?? tx.cashback_amount ?? tx.amount ?? 0
         );
         return sum + (amt > 0 ? amt : 0);
       }, 0);
-  }, [db.transactions]);
+  }, [db.transactions, currentUserId]);
 
   const pendingCash = isAuthenticated && db.user
     ? Math.max(
@@ -176,14 +182,14 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const pendingPtsFromTxs = React.useMemo(() => {
     return (db.transactions || [])
-      .filter((tx) => tx.status === 'pending')
+      .filter((tx) => tx.status === 'pending' && Boolean(currentUserId && tx.user_id === currentUserId))
       .reduce((sum, tx) => {
         const pts = Number(
           tx.amount_points ?? tx.net_points ?? tx.points ?? 0
         );
         return sum + (pts > 0 ? pts : 0);
       }, 0);
-  }, [db.transactions]);
+  }, [db.transactions, currentUserId]);
 
   const pendingPts = isAuthenticated && db.user
     ? Math.max(

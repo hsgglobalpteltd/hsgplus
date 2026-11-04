@@ -121,9 +121,14 @@ export const SimpleTransactionList: React.FC<{
   // Deduplicate transactions by reference_id so pending -> verified stays on the exact same row
   const unifiedTransactions = useMemo(() => {
     if (!isAuthenticated) return [];
+    const currentUserId =
+      db.user?.id ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('hsg_auth_user_id') || ''
+        : '');
     const rawList: HsgTransaction[] =
       db.transactions && db.transactions.length > 0
-        ? db.transactions
+        ? db.transactions.filter((t) => Boolean(currentUserId && t.user_id && t.user_id === currentUserId))
         : (db.history || []).map((h) => ({
             id: h.id,
             user_phone: db.user?.phone_number || '',

@@ -183,7 +183,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onClose, onSuccess }) => {
             const rawCand = (data.customer_phone || fullPhone || '').replace(/\D/g, '');
             const verifiedPhone = rawCand.length >= 8 ? rawCand : fullPhone.replace(/\D/g, '');
             if (verifiedPhone && verifiedPhone.length >= 8) {
-              try { localStorage.setItem('hsg_auth_phone', verifiedPhone); } catch {}
+              try {
+                localStorage.setItem('hsg_auth_phone', verifiedPhone);
+                if (data.user?.id) {
+                  localStorage.setItem('hsg_auth_user_id', data.user.id);
+                } else {
+                  localStorage.removeItem('hsg_auth_user_id');
+                }
+              } catch {}
             }
             const verifiedName = data.customer_name || `HSG Member ${verifiedPhone.slice(-4)}`;
             window.setTimeout(() => {

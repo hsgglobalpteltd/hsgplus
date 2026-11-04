@@ -237,6 +237,7 @@ export interface CashbackHistoryItem {
 
 export interface HsgTransaction {
   id: string;
+  user_id?: string;
   user_phone: string;
   user_nickname?: string;
   currency: 'cashback' | 'points' | 'both' | 'free';

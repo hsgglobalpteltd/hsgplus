@@ -111,6 +111,7 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
       if (isMounted && db.transactions) {
         const txFriends: ReferredFriend[] = db.transactions
           .filter((t) => {
+            if (userId && t.user_id && t.user_id !== userId) return false;
             const type = String(t.type || '');
             const refType = String((t as any).reference_type || '');
             const isTierOther =
@@ -137,6 +138,7 @@ export const InviteFriendsPage: React.FC<InviteFriendsPageProps> = ({ onBack }) 
 
         const txBonus: BonusPointItem[] = db.transactions
           .filter((t) => {
+            if (userId && t.user_id && t.user_id !== userId) return false;
             const type = String(t.type || '');
             const refType = String((t as any).reference_type || '');
             return (

@@ -183,9 +183,15 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     ? Number(db.user.wallet_balance || 0)
     : MOCK_AVAILABLE_CASH;
 
+  const currentUserId =
+    db.user?.id ||
+    (typeof window !== 'undefined'
+      ? localStorage.getItem('hsg_auth_user_id') || ''
+      : '');
+
   // Always include pending verify transactions in total amount
   const pendingCashFromTxs = (db.transactions || [])
-    .filter((tx) => tx.status === 'pending')
+    .filter((tx) => tx.status === 'pending' && Boolean(currentUserId && tx.user_id === currentUserId))
     .reduce((sum, tx) => {
       const amt = Number(
         tx.amount_cashback ?? tx.net_cashback ?? tx.cashback_amount ?? tx.amount ?? 0
@@ -209,7 +215,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     : MOCK_AVAILABLE_PTS;
 
   const pendingPtsFromTxs = (db.transactions || [])
-    .filter((tx) => tx.status === 'pending')
+    .filter((tx) => tx.status === 'pending' && Boolean(currentUserId && tx.user_id === currentUserId))
     .reduce((sum, tx) => {
       const pts = Number(
         tx.amount_points ?? tx.net_points ?? tx.points ?? 0
@@ -590,7 +596,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
     // 1. Claims activity (submitted, approved, rejected) — strictly filtered by user_id
     (db.cashback_claims || [])
-      .filter((c) => !currentUserId || !c.user_id || c.user_id === currentUserId)
+      .filter((c) => Boolean(currentUserId && c.user_id && c.user_id === currentUserId))
       .forEach((c) => {
         const matchedTx = (db.transactions || []).find(
           (tx) =>
@@ -675,7 +681,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       });
 
     // 2. Transactions activity from hsgplus_ledger (withdrawals, referrals, contests, events, shop redemptions)
-    (db.transactions || []).forEach((tx) => {
+    (db.transactions || [])
+      .filter((tx) => Boolean(currentUserId && tx.user_id && tx.user_id === currentUserId))
+      .forEach((tx) => {
       const amt = Number(
         tx.net_cashback ?? tx.amount_cashback ?? tx.cashback_amount ?? tx.amount ?? 0
       );
@@ -872,6 +880,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
     // Also include any standalone shop_order transactions not in merch_orders
     (db.transactions || [])
+      .filter((tx) => Boolean(currentUserId && tx.user_id && tx.user_id === currentUserId))
       .filter((tx) => {
         const txType = String(tx.type || '');
         const titleLower = String(tx.title || '').toLowerCase();
@@ -1203,7 +1212,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const userInvites = Math.max(
     Number(db.user?.referral_count || 0),
     (db.transactions || []).filter(
-      (tx) => tx.type === 'referral' || (tx.title || '').toLowerCase().includes('referral')
+      (tx) => Boolean(currentUserId && tx.user_id === currentUserId) && (tx.type === 'referral' || (tx.title || '').toLowerCase().includes('referral'))
     ).length
   );
   const invitesSatisfied = userInvites >= minInvites;
@@ -1219,8 +1228,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     ).length,
     (db.transactions || []).filter(
       (tx) =>
-        tx.type === 'event_rsvp' ||
-        (tx.title || '').toLowerCase().includes('event rsvp')
+        Boolean(currentUserId && tx.user_id === currentUserId) &&
+        (tx.type === 'event_rsvp' ||
+        (tx.title || '').toLowerCase().includes('event rsvp'))
     ).length
   );
   const eventsSatisfied = userEvents >= minEvents;

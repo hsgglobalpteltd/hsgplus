@@ -281,14 +281,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const fetchOpts: RequestInit = { cache: 'no-store' };
       const preloadedUrls: string[] = [];
-      const authUserId = (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '';
+      const authUserId = (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || db.user?.id || '';
       const claimsUrl = authUserId
         ? `${LIVE_WORKER_URL}/api/hsg-app/cashback/claims?time_filter=all&user_id=${encodeURIComponent(authUserId)}`
-        : `${LIVE_WORKER_URL}/api/hsg-app/cashback/claims?time_filter=all`;
+        : null;
 
       const [res, clRes, ctRes, nwRes, evRes, stRes] = await Promise.all([
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/cashback/campaigns`, fetchOpts),
-        fetch(claimsUrl, fetchOpts),
+        claimsUrl
+          ? fetch(claimsUrl, fetchOpts)
+          : Promise.resolve({ ok: true, json: async () => ({ claims: [] }) } as Response),
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/contests`, fetchOpts),
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/news`, fetchOpts),
         fetch(`${LIVE_WORKER_URL}/api/hsg-app/events`, fetchOpts),
@@ -319,11 +321,16 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      if (clRes.ok) {
+      if (clRes && clRes.ok) {
         const clData = await clRes.json();
         if (Array.isArray(clData.claims)) {
-          setDb((prev) => ({ ...prev, cashback_claims: clData.claims }));
+          const userClaimsOnly = authUserId
+            ? clData.claims.filter((c: any) => c.user_id === authUserId)
+            : [];
+          setDb((prev) => ({ ...prev, cashback_claims: userClaimsOnly }));
         }
+      } else if (!authUserId) {
+        setDb((prev) => ({ ...prev, cashback_claims: [] }));
       }
 
       // Sync Contests & Submissions
@@ -653,9 +660,19 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
   // Sync Live Transactions from dedicated database ledger (hsgplus_ledger)
   const syncLiveTransactions = async (phoneFilter?: string) => {
     try {
-      const authPhone = phoneFilter || (localStorage.getItem('hsg_auth_phone') ) || '';
-      const authUserId = db.user?.id || (localStorage.getItem('hsg_auth_user_id') ) || '';
-      if (!authUserId && !authPhone) return;
+      const authPhone = phoneFilter || (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_phone') : '') || '';
+      let authUserId = db.user?.id || (typeof window !== 'undefined' ? localStorage.getItem('hsg_auth_user_id') : '') || '';
+
+      // Guard: if phoneFilter is provided and differs from stored user, invalidate stale authUserId
+      if (phoneFilter && db.user?.phone_number && db.user.phone_number.replace(/\D/g, '') !== phoneFilter.replace(/\D/g, '')) {
+        authUserId = '';
+      }
+
+      if (!authUserId && !authPhone) {
+        setDb((prev) => ({ ...prev, transactions: [] }));
+        return;
+      }
+
       const queryParam = authUserId
         ? `?user_id=${encodeURIComponent(authUserId)}`
         : `?user_phone=${encodeURIComponent(authPhone)}`;
@@ -682,7 +699,21 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           } catch (_) {}
         }
         if (Array.isArray(data.transactions)) {
-          const txs = data.transactions.map((t: any) => ({
+          const effectiveUserId = authUserId || db.user?.id || '';
+          const effectivePhone = (authPhone || db.user?.phone_number || '').replace(/\D/g, '');
+
+          // Strictly filter transactions to only the current user's transactions
+          const matchedTxs = data.transactions.filter((t: any) => {
+            if (effectiveUserId && t.user_id) {
+              return t.user_id === effectiveUserId;
+            }
+            if (effectivePhone && t.user_phone) {
+              return t.user_phone.replace(/\D/g, '') === effectivePhone;
+            }
+            return false;
+          });
+
+          const txs = matchedTxs.map((t: any) => ({
             ...t,
             amount: Number(t.net_cashback ?? t.amount_cashback ?? t.cashback_amount ?? t.amount ?? 0),
             points: Number(t.net_points ?? t.amount_points ?? t.points ?? 0),
@@ -947,6 +978,8 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
     setDb((prev) => ({
       ...prev,
       user: userRecord,
+      transactions: [],
+      cashback_claims: [],
       users_list: prev.users_list.some((u) => (userRecord.id && (u.id === userRecord.id || u.user_id === userRecord.id)))
         ? prev.users_list.map((u) =>
             (userRecord.id && (u.id === userRecord.id || u.user_id === userRecord.id)) ? userRecord : u
