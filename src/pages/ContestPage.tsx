@@ -116,8 +116,16 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     }
   }, [initialContestId, db.contests, selectedContestId]);
 
-  const contest =
-    db.contests.find((c) => c.id.toLowerCase() === selectedContestId.toLowerCase()) || db.contests[0] || null;
+  const contest = React.useMemo(() => {
+    if (selectedContestId) {
+      const found = db.contests.find(
+        (c) => c.id.toLowerCase() === selectedContestId.toLowerCase()
+      );
+      if (found) return found;
+      if (initialContestId) return null;
+    }
+    return db.contests[0] || null;
+  }, [db.contests, selectedContestId, initialContestId]);
 
   // Check required event
   const linkedEvent = React.useMemo(() => {
@@ -1513,9 +1521,27 @@ export const ContestPage: React.FC<ContestPageProps> = ({
             </button>
           </div>
         </div>
+      ) : db.contests.length === 0 ? (
+        <div className="w-full flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-9 h-9 border-3 border-zinc-200 border-t-[#0B57D0] rounded-full animate-spin mb-3" />
+          <p className="text-xs font-bold text-zinc-700">Loading Contest Details...</p>
+        </div>
       ) : (
-        <div className="w-full p-8 rounded-3xl bg-white text-center text-xs text-zinc-400 shadow-xs">
-          No contest active right now. Please check back later.
+        <div className="w-full flex flex-col items-center justify-center py-20 px-4 text-center space-y-3 bg-white rounded-3xl shadow-xs mt-2">
+          <div className="w-12 h-12 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400">
+            <Trophy className="w-6 h-6 text-zinc-400" />
+          </div>
+          <h3 className="text-sm font-bold text-zinc-900">Contest Not Available</h3>
+          <p className="text-xs text-zinc-500 max-w-xs">
+            This contest may have ended, been archived, or the link may be invalid.
+          </p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="h-9 px-5 rounded-full bg-[#141416] text-white text-xs font-bold shadow-xs hover:bg-black transition active:scale-95 cursor-pointer mt-1"
+          >
+            Back to Home
+          </button>
         </div>
       )}
 

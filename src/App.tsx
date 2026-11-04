@@ -33,6 +33,73 @@ type ActiveRoute =
   | 'invite'
   | 'transactions';
 
+function parseInitialDeepLink(): {
+  route: ActiveRoute;
+  contestId: string | null;
+  eventId: string | null;
+  venueToken: string | null;
+  isVenueScan: boolean;
+} {
+  if (typeof window === 'undefined') {
+    return { route: 'home', contestId: null, eventId: null, venueToken: null, isVenueScan: false };
+  }
+  const pathname = window.location.pathname || '';
+  const rawHash = (window.location.hash || '').replace(/^#/, '');
+  const search = window.location.search || '';
+  const raw = window.location.hash || window.location.search;
+
+  let contestId: string | null = null;
+  let eventId: string | null = null;
+  let venueToken: string | null = null;
+  let isVenueScan = false;
+  let targetRoute: ActiveRoute = 'home';
+
+  // 1. Direct pathname detection (/c/:id or /e/:id)
+  if (/^\/[cC]\//.test(pathname)) {
+    const rawId = pathname.replace(/^\/[cC]\//, '').split('/')[0].split('?')[0].trim();
+    if (rawId) contestId = decodeURIComponent(rawId).toLowerCase();
+    targetRoute = 'contest';
+  } else if (/^\/[eE]\//.test(pathname)) {
+    const rawId = pathname.replace(/^\/[eE]\//, '').split('/')[0].split('?')[0].trim();
+    if (rawId) eventId = decodeURIComponent(rawId).toLowerCase();
+    targetRoute = 'events';
+  }
+
+  // 2. Query / Hash parameters
+  const hashPart = rawHash.split('?')[0].toLowerCase();
+  const queryStr = raw.includes('?') ? raw.split('?')[1] : (search ? search.replace(/^\?/, '') : '');
+  const params = new URLSearchParams(queryStr);
+  const qId = params.get('id');
+  const vt = params.get('vt');
+
+  if (vt) {
+    venueToken = decodeURIComponent(vt);
+    isVenueScan = true;
+  }
+  if (params.get('venue_scan') === '1') {
+    isVenueScan = true;
+  }
+
+  if (hashPart === 'contest' || raw.toLowerCase().includes('contest') || pathname.toLowerCase().includes('contest')) {
+    if (qId) contestId = decodeURIComponent(qId).trim().toLowerCase();
+    targetRoute = 'contest';
+  } else if (hashPart === 'events' || raw.toLowerCase().includes('events') || (qId && !contestId) || isVenueScan) {
+    if (qId) eventId = decodeURIComponent(qId).trim().toLowerCase();
+    targetRoute = 'events';
+  } else if (
+    ['account', 'redeem', 'invite', 'transactions', 'snap'].includes(hashPart)
+  ) {
+    targetRoute = hashPart as ActiveRoute;
+  } else {
+    const saved = sessionStorage.getItem('hsg_active_route');
+    if (saved && ['home', 'account', 'events', 'contest', 'redeem', 'invite', 'transactions', 'snap'].includes(saved)) {
+      targetRoute = saved as ActiveRoute;
+    }
+  }
+
+  return { route: targetRoute, contestId, eventId, venueToken, isVenueScan };
+}
+
 const HsgMobileShell: React.FC = () => {
   const {
     db,
@@ -44,49 +111,9 @@ const HsgMobileShell: React.FC = () => {
     toastMessage,
   } = useHsgData();
 
-  const [route, setRoute] = useState<ActiveRoute>(() => {
-    if (typeof window !== 'undefined') {
-      const raw = window.location.hash || window.location.search;
-      if (raw.toLowerCase().includes('contest')) {
-        return 'contest';
-      }
-      if (raw.includes('id=') || raw.includes('venue_scan=') || raw.toLowerCase().includes('events')) {
-        return 'events';
-      }
-      const rawHash = window.location.hash.replace('#', '');
-      const hash = rawHash.split('?')[0].toLowerCase();
-      if (
-        [
-          'account',
-          'events',
-          'contest',
-          'redeem',
-          'invite',
-          'transactions',
-          'snap',
-        ].includes(hash)
-      ) {
-        return hash as ActiveRoute;
-      }
-      const saved = sessionStorage.getItem('hsg_active_route');
-      if (
-        saved &&
-        [
-          'home',
-          'account',
-          'events',
-          'contest',
-          'redeem',
-          'invite',
-          'transactions',
-          'snap',
-        ].includes(saved)
-      ) {
-        return saved as ActiveRoute;
-      }
-    }
-    return 'home';
-  });
+  const initialDeepLink = React.useMemo(() => parseInitialDeepLink(), []);
+
+  const [route, setRoute] = useState<ActiveRoute>(initialDeepLink.route);
 
   const homeScrollPosRef = useRef<number>(0);
   const eventsScrollPosRef = useRef<number>(0);
@@ -120,52 +147,27 @@ const HsgMobileShell: React.FC = () => {
 
   useEffect(() => {
     const handleHashChange = () => {
-      const raw = window.location.hash || window.location.search;
-      const rawHash = window.location.hash.replace('#', '');
-      const hash = rawHash.split('?')[0].toLowerCase();
-      if (raw.includes('?')) {
-        const queryStr = raw.split('?')[1] || '';
-        const params = new URLSearchParams(queryStr);
-        const queryId = params.get('id');
-        if (hash === 'contest' || raw.toLowerCase().includes('contest')) {
-          if (queryId) setSelectedContestId(queryId);
-          setRoute('contest');
-          return;
-        }
-        if (queryId) setSelectedEventId(queryId);
-        if (params.get('venue_scan') === '1') setIsVenueScan(true);
-      }
-      if (hash === 'contest' || raw.toLowerCase().includes('contest')) {
-        setRoute('contest');
-        return;
-      }
-      if (raw.includes('id=') || raw.includes('venue_scan=') || hash === 'events') {
-        setRoute('events');
-        return;
-      }
-      if (hash === 'transactions' && !isAuthenticated) {
+      const parsed = parseInitialDeepLink();
+      if (parsed.contestId) setSelectedContestId(parsed.contestId);
+      if (parsed.eventId) setSelectedEventId(parsed.eventId);
+      if (parsed.venueToken) setVenueToken(parsed.venueToken);
+      if (parsed.isVenueScan) setIsVenueScan(true);
+
+      if (parsed.route === 'transactions' && !isAuthenticated) {
         setRoute('home');
         openLoginModal();
         return;
       }
-      if (
-        hash === 'account' ||
-        hash === 'contest' ||
-        hash === 'redeem' ||
-        hash === 'invite' ||
-        hash === 'transactions' ||
-        hash === 'snap'
-      ) {
+
+      if (parsed.route === 'contest' || parsed.route === 'events') {
         if (route === 'home' && mainScrollRef.current) {
           homeScrollPosRef.current = mainScrollRef.current.scrollTop;
         }
         if (route === 'events' && mainScrollRef.current) {
           eventsScrollPosRef.current = mainScrollRef.current.scrollTop;
         }
-        setRoute(hash as ActiveRoute);
-      } else if (!hash) {
-        setRoute('home');
       }
+      setRoute(parsed.route);
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
@@ -173,31 +175,13 @@ const HsgMobileShell: React.FC = () => {
 
   // On-mount deep-link check: If URL or QR contains contest or event id, vt, or venue_scan, activate route immediately
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const raw = window.location.hash || window.location.search;
-      if (raw.toLowerCase().includes('contest')) {
-        const match = raw.match(/[?&]id=([^&]+)/);
-        if (match && match[1]) {
-          setSelectedContestId(decodeURIComponent(match[1]));
-        }
-        setRoute('contest');
-        return;
-      }
-      const match = raw.match(/[?&]id=([^&]+)/);
-      if (match && match[1]) {
-        setSelectedEventId(decodeURIComponent(match[1]));
-        setRoute('events');
-      }
-      const vtMatch = raw.match(/[?&]vt=([^&]+)/);
-      if (vtMatch && vtMatch[1]) {
-        setVenueToken(decodeURIComponent(vtMatch[1]));
-        setIsVenueScan(true);
-        setRoute('events');
-      }
-      if (raw.includes('venue_scan=1')) {
-        setIsVenueScan(true);
-        setRoute('events');
-      }
+    const parsed = parseInitialDeepLink();
+    if (parsed.contestId) setSelectedContestId(parsed.contestId);
+    if (parsed.eventId) setSelectedEventId(parsed.eventId);
+    if (parsed.venueToken) setVenueToken(parsed.venueToken);
+    if (parsed.isVenueScan) setIsVenueScan(true);
+    if (parsed.route && parsed.route !== 'home') {
+      setRoute(parsed.route);
     }
   }, []);
 
@@ -214,26 +198,10 @@ const HsgMobileShell: React.FC = () => {
     'home'
   );
   const [eventBackRoute, setEventBackRoute] = useState<'events' | 'contest'>('events');
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const raw = window.location.hash || window.location.search;
-    const match = raw.match(/[?&]id=([^&]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  });
-  const [venueToken, setVenueToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const raw = window.location.hash || window.location.search;
-    const match = raw.match(/[?&]vt=([^&]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  });
-  const [isVenueScan, setIsVenueScan] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const raw = window.location.hash || window.location.search;
-    return raw.includes('venue_scan=1') || raw.includes('vt=');
-  });
-  const [selectedContestId, setSelectedContestId] = useState<string | null>(
-    null
-  );
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(initialDeepLink.eventId);
+  const [venueToken, setVenueToken] = useState<string | null>(initialDeepLink.venueToken);
+  const [isVenueScan, setIsVenueScan] = useState<boolean>(initialDeepLink.isVenueScan);
+  const [selectedContestId, setSelectedContestId] = useState<string | null>(initialDeepLink.contestId);
   const [contestAutoScroll, setContestAutoScroll] = useState<boolean>(false);
   const [contestBackRoute, setContestBackRoute] = useState<'home' | 'events'>('home');
   const [isDesktopViewport, setIsDesktopViewport] = useState<boolean>(

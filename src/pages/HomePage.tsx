@@ -305,14 +305,17 @@ export const HomePage: React.FC<HomePageProps> = ({
       </div>
 
       {/* 2. ACTIVE CONTESTS (Hidden when no active contest exists) */}
-      {db.contests.length > 0 && (
+      {db.contests.filter((c) => c.is_published !== false && !c.is_archived).length > 0 && (
         <section className="w-full">
           <div className="flex items-center justify-between mb-2.5">
             <h2 className="text-base font-bold text-[#141416]">Active Contests</h2>
           </div>
 
           <div className="w-full space-y-3.5">
-            {db.contests.slice(0, 3).map((contest) => {
+            {db.contests
+              .filter((c) => c.is_published !== false && !c.is_archived)
+              .slice(0, 3)
+              .map((contest) => {
               const fpTitle =
                 contest.frontpage_title ||
                 contest.frontpage_config?.title ||

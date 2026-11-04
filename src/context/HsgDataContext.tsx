@@ -329,15 +329,15 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
       // Sync Contests & Submissions
       if (ctRes.ok) {
         const ctData = await ctRes.json();
-        const publishedContests = Array.isArray(ctData.contests)
+        const availableContests = Array.isArray(ctData.contests)
           ? ctData.contests
-              .filter((c: any) => c.is_published && !c.is_archived)
+              .filter((c: any) => !c.is_archived)
               .map((c: any) => ({
                 ...c,
                 prize_tiers: Array.isArray(c.prize_tiers) ? c.prize_tiers : [],
               }))
           : [];
-        publishedContests.forEach((c: any) => {
+        availableContests.forEach((c: any) => {
           if (c.frontpage_poster_url) preloadedUrls.push(c.frontpage_poster_url);
           if (c.frontpage_config?.cover_photo_url) preloadedUrls.push(c.frontpage_config.cover_photo_url);
           if (Array.isArray(c.inside_posters)) preloadedUrls.push(...c.inside_posters);
@@ -361,7 +361,7 @@ export const HsgDataProvider: React.FC<{ children: React.ReactNode }> = ({
           : [];
         setDb((prev) => ({
           ...prev,
-          contests: publishedContests,
+          contests: availableContests,
           contest_submissions: allSubs,
           contest_winners: Array.isArray(ctData.winners) ? ctData.winners : [],
         }));
