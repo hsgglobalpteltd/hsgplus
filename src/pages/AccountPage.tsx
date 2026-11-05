@@ -580,568 +580,100 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     },
   ], []);
 
-  // Compile full activity feed
+  // Compile full activity feed directly from db.user.logs (Single Source of Truth)
   const allActivities = useMemo<ActivityItem[]>(() => {
     // If guest / not logged in, return base 24 sample entries
     if (!isAuthenticated) {
       return BASE_SAMPLE_ACTIVITIES;
     }
 
-    const list: ActivityItem[] = [...localActivities];
-    const currentUserId =
-      db.user?.id ||
-      (typeof window !== 'undefined'
-        ? localStorage.getItem('hsg_auth_user_id') || ''
-        : '');
+    const rawLogs = Array.isArray(db.user?.logs) ? db.user!.logs : [];
+    const list: ActivityItem[] = [];
 
-    // 1. Claims activity (submitted, approved, rejected) — strictly filtered by user_id
-    (db.cashback_claims || [])
-      .filter((c) => Boolean(currentUserId && c.user_id && c.user_id === currentUserId))
-      .forEach((c) => {
-        const matchedTx = (db.transactions || []).find(
-          (tx) =>
-            (c.id && (tx.reference_id === c.id || tx.metadata?.claim_id === c.id)) ||
-            (c.transaction_id && tx.transaction_id === c.transaction_id)
-        );
+    rawLogs.forEach((item: any, idx: number) => {
+      const act = item.action || item.title || 'Account Event';
+      const isReg = act.toLowerCase().includes('register');
+      const isProf = act.toLowerCase().includes('profile');
+      const isClaim = act.toLowerCase().includes('claim') || item.category === 'Receipt Claim';
+      const isWithdrawal = act.toLowerCase().includes('withdraw') || item.category === 'Withdrawal';
+      const isReward = act.toLowerCase().includes('reward') || act.toLowerCase().includes('bonus') || item.category === 'Reward';
+      const isOrder = act.toLowerCase().includes('order') || item.category === 'Order';
+      const isContest = act.toLowerCase().includes('contest') || item.category === 'Contest';
 
-        const camp = (db.cashback_campaigns || []).find((cmp) => cmp.id === c.campaign_id);
+      let defaultCategory: ActivityItem['category'] = 'Account';
+      let defaultIcon: ActivityItem['iconType'] = 'shield';
+      let defaultBadge: NonNullable<ActivityItem['badge']> = { label: 'Verified', variant: 'emerald' };
 
-        const claimCash = Number(
-          matchedTx && ((matchedTx.net_cashback ?? 0) > 0 || (matchedTx.amount_cashback ?? 0) > 0)
-            ? (matchedTx.net_cashback ?? matchedTx.amount_cashback ?? matchedTx.cashback_amount ?? matchedTx.amount ?? 0)
-            : (
-                (c as any).reward?.cash ??
-                (c as any).reward?.cashback ??
-                c.cashback_amount ??
-                camp?.reward?.cash ??
-                camp?.reward_cash ??
-                camp?.cashback_amount ??
-                0
-              )
-        );
-
-        const claimPoints = Number(
-          matchedTx && ((matchedTx.net_points ?? 0) > 0 || (matchedTx.amount_points ?? 0) > 0)
-            ? (matchedTx.net_points ?? matchedTx.amount_points ?? matchedTx.points ?? 0)
-            : (
-                (c as any).reward?.points ??
-                (c as any).points ??
-                (c as any).points_amount ??
-                (c as any).reward_points ??
-                camp?.reward?.points ??
-                camp?.reward_points ??
-                0
-              )
-        );
-
-        const isApproved = c.status === 'approved' || c.status === 'credited';
-        const isRejected = c.status === 'rejected';
-
-        const rewardParts: string[] = [];
-        if (claimCash > 0) rewardParts.push(`+$${claimCash.toFixed(2)} cashback`);
-        if (claimPoints > 0) rewardParts.push(`+${claimPoints.toLocaleString()} pts`);
-        if (rewardParts.length === 0) {
-          rewardParts.push('Cashback & points');
-        }
-        const rewardSummary = rewardParts.join(' & ');
-
-        if (isApproved) {
-          list.push({
-            id: `claim-approved-${c.id}`,
-            category: 'Receipt Claim',
-            title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Approved`,
-            description: `${rewardSummary} verified and credited to wallet balance.`,
-            timestamp: Number(c.timestamp || Date.now() - 3600000),
-            badge: { label: 'Verified', variant: 'emerald' },
-            iconType: 'check',
-          });
-        } else if (isRejected) {
-          list.push({
-            id: `claim-rejected-${c.id}`,
-            category: 'Receipt Claim',
-            title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Declined`,
-            description:
-              c.rejection_reason ||
-              'Receipt could not be verified. Please check retail receipt clarity.',
-            timestamp: Number(c.timestamp || Date.now() - 3600000),
-            badge: { label: 'Declined', variant: 'rose' },
-            iconType: 'alert',
-          });
-        } else {
-          list.push({
-            id: `claim-pending-${c.id}`,
-            category: 'Receipt Claim',
-            title: `Receipt Claim #${c.id.slice(-6).toUpperCase()} Submitted`,
-            description: `Receipt uploaded for verification (Est. ${rewardSummary}).`,
-            timestamp: Number(c.timestamp || Date.now() - 7200000),
-            badge: { label: 'Pending Verify', variant: 'amber' },
-            iconType: 'receipt',
-          });
-        }
-      });
-
-    // 2. Transactions activity from hsgplus_ledger (withdrawals, referrals, contests, events, shop redemptions)
-    (db.transactions || [])
-      .filter((tx) => Boolean(currentUserId && tx.user_id && tx.user_id === currentUserId))
-      .forEach((tx) => {
-      const amt = Number(
-        tx.net_cashback ?? tx.amount_cashback ?? tx.cashback_amount ?? tx.amount ?? 0
-      );
-      const pts = Number(tx.net_points ?? tx.amount_points ?? tx.points ?? 0);
-      const txType = String(tx.type || '').toLowerCase();
-      const txStatus = String(tx.status || 'completed').toLowerCase();
-      const titleLower = (tx.title || tx.description || '').toLowerCase();
-
-      if (
-        (txType === 'withdrawal' ||
-          (titleLower.includes('withdraw') && !titleLower.includes('fee'))) &&
-        txType !== 'withdrawal_fee' &&
-        (Math.abs(amt) > 0 || Math.abs(pts) > 0)
-      ) {
-        const isPending =
-          txStatus === 'pending' ||
-          txStatus === 'requested' ||
-          txStatus === 'pending_payout';
-        const isRejected = txStatus === 'rejected' || txStatus === 'declined';
-        list.push({
-          id: `tx-withdraw-${tx.id}`,
-          category: 'Withdrawal',
-          title: isRejected ? 'PayNow Withdrawal Declined' : 'PayNow Withdrawal',
-          description: isRejected
-            ? tx.description ||
-              `Withdrawal request of $${Math.abs(amt).toFixed(2)} was declined and refunded.`
-            : isPending
-            ? `Withdrawal request of $${Math.abs(amt).toFixed(2)} is pending Admin review.`
-            : `PayNow transfer of $${Math.abs(amt).toFixed(2)} successfully sent.`,
-          timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: isRejected
-            ? { label: 'Declined', variant: 'rose' }
-            : isPending
-            ? { label: 'Processing', variant: 'amber' }
-            : { label: 'Completed', variant: 'emerald' },
-          iconType: isRejected ? 'alert' : 'wallet',
-        });
-      } else if (txType.startsWith('referral') || titleLower.includes('referral')) {
-        const isWelcome = txType === 'referral_welcome' || titleLower.includes('welcome');
-        const rewardParts: string[] = [];
-        if (amt > 0) rewardParts.push(`+$${amt.toFixed(2)}`);
-        if (pts > 0) rewardParts.push(`+${pts} pts`);
-        list.push({
-          id: `tx-referral-${tx.id}`,
-          category: 'Reward',
-          title: isWelcome ? 'Referral Welcome Bonus' : 'Friend Referral Bonus',
-          description:
-            tx.description ||
-            `Reward credited (${rewardParts.join(' & ') || 'Bonus'}) in HSG+ Community.`,
-          timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: { label: 'Rewarded', variant: 'emerald' },
-          iconType: 'gift',
-        });
-      } else if (
-        txType === 'contest_entry' ||
-        txType === 'contest_prize' ||
-        titleLower.includes('contest')
-      ) {
-        const isPrize = txType === 'contest_prize' || titleLower.includes('prize');
-        const isRejected = txStatus === 'rejected' || txStatus === 'declined';
-        const isPending = txStatus === 'pending' || txStatus === 'submitted';
-        list.push({
-          id: `tx-contest-${tx.id}`,
-          category: 'Reward',
-          title: isPrize
-            ? tx.title || 'Contest Winner Prize Claimed'
-            : tx.title || 'Contest Entry',
-          description:
-            tx.description ||
-            (pts > 0
-              ? `Earned +${pts} pts from contest participation.`
-              : amt > 0
-              ? `Earned +$${amt.toFixed(2)} from contest prize.`
-              : 'Contest participation recorded.'),
-          timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: isRejected
-            ? { label: 'Declined', variant: 'rose' }
-            : isPending
-            ? { label: 'Pending Verify', variant: 'amber' }
-            : { label: isPrize ? 'Winner' : 'Verified', variant: 'emerald' },
-          iconType: isRejected ? 'alert' : 'gift',
-        });
-      } else if (
-        txType === 'event_rsvp' ||
-        txType === 'event_reward' ||
-        titleLower.includes('event')
-      ) {
-        const isCheckin = txType === 'event_reward' || titleLower.includes('check-in');
-        list.push({
-          id: `tx-event-${tx.id}`,
-          category: isCheckin ? 'Reward' : 'Account',
-          title: tx.title || (isCheckin ? 'Event Check-In Reward' : 'Event RSVP'),
-          description:
-            tx.description ||
-            (pts > 0
-              ? `Earned +${pts} pts for event check-in.`
-              : 'Event activity recorded.'),
-          timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: { label: isCheckin ? 'Checked-In' : 'Joined', variant: isCheckin ? 'emerald' : 'blue' },
-          iconType: 'check',
-        });
-      } else if (
-        txType === 'shop_order' ||
-        titleLower.includes('redeem') ||
-        titleLower.includes('order') ||
-        titleLower.includes('shop')
-      ) {
-        // Will be matched and rendered from live merch_orders below
-      }
-    });
-
-    // 2b. Merch Orders Progress (Order Placed -> Preparing -> Delivered)
-    const userOrders = (db.merch_orders || []).filter((o) => {
-      return Boolean(currentUserId && o.user_id && o.user_id === currentUserId);
-    });
-
-    const processedOrderIds = new Set<string>();
-
-    userOrders.forEach((ord) => {
-      processedOrderIds.add(ord.id);
-      const st = String(ord.status || 'pending').toLowerCase();
-      const isDelivered = st === 'delivered' || st === 'completed' || st === 'fulfilled';
-      const isDispatched = st === 'shipped' || st === 'out_for_delivery' || st === 'delivering';
-      const isReady = st === 'ready' || st === 'ready_for_pickup';
-      const isPreparing = st === 'preparing' || st === 'prepare' || st === 'processing';
-      const isCancelled = st === 'cancelled' || st === 'rejected';
-      const isDelivery = ord.fulfillment === 'delivery' || ord.fulfillment_method === 'delivery';
-
-      let step = 1;
-      let badgeLabel = 'Order Placed';
-      let badgeVariant: 'blue' | 'amber' | 'emerald' | 'rose' | 'purple' | 'indigo' = 'blue';
-
-      if (isDelivered) {
-        step = 3;
-        badgeLabel = isDelivery ? 'Delivered' : 'Collected';
-        badgeVariant = 'emerald';
-      } else if (isDispatched) {
-        step = 2;
-        badgeLabel = 'Out for Delivery';
-        badgeVariant = 'purple';
-      } else if (isReady) {
-        step = 2;
-        badgeLabel = 'Ready for Pickup';
-        badgeVariant = 'indigo';
-      } else if (isPreparing) {
-        step = 2;
-        badgeLabel = 'Preparing';
-        badgeVariant = 'amber';
-      } else if (isCancelled) {
-        step = 0;
-        badgeLabel = 'Cancelled';
-        badgeVariant = 'rose';
-      } else {
-        step = 1;
-        badgeLabel = 'Order Placed';
-        badgeVariant = 'blue';
+      if (isWithdrawal) {
+        defaultCategory = 'Withdrawal';
+        defaultIcon = 'wallet';
+        defaultBadge = { label: 'Completed', variant: 'emerald' };
+      } else if (isClaim) {
+        defaultCategory = 'Receipt Claim';
+        defaultIcon = 'receipt';
+        defaultBadge = { label: 'Pending Verify', variant: 'amber' };
+      } else if (isReward || isContest) {
+        defaultCategory = 'Reward';
+        defaultIcon = 'gift';
+        defaultBadge = { label: 'Rewarded', variant: 'emerald' };
+      } else if (isOrder) {
+        defaultCategory = 'Order';
+        defaultIcon = 'order';
+        defaultBadge = { label: 'Delivered', variant: 'emerald' };
+      } else if (isProf) {
+        defaultCategory = 'Account';
+        defaultIcon = 'shield';
+        defaultBadge = { label: 'Saved', variant: 'blue' };
       }
 
-      const itemsSummary = Array.isArray(ord.items) && ord.items.length > 0
-        ? ord.items.map((i: any) => `${i.qty}x ${i.name || 'Merch'}`).join(', ')
-        : 'Merch Item';
+      const badgeObj = item.badge || defaultBadge;
+      const bVar = badgeObj ? badgeObj.variant : 'emerald';
+      const validVariant: NonNullable<ActivityItem['badge']>['variant'] =
+        bVar === 'emerald' ||
+        bVar === 'amber' ||
+        bVar === 'rose' ||
+        bVar === 'blue' ||
+        bVar === 'purple' ||
+        bVar === 'zinc' ||
+        bVar === 'indigo'
+          ? bVar
+          : 'emerald';
 
-      const desc = isDelivered
-        ? (isDelivery ? `Order delivered to ${ord.delivery_address || 'your address'}.` : `Order collected successfully.`)
-        : isDispatched
-        ? `Out for delivery to ${ord.delivery_address || 'your address'}.`
-        : isReady
-        ? `Ready for pickup at ${db.settings.self_collect_address || 'HSG Global HQ'}.`
-        : isPreparing
-        ? (isDelivery ? 'Your order is currently being prepared and packed for delivery.' : 'Your order is being packed and prepared for pickup.')
-        : isCancelled
-        ? 'Order has been cancelled.'
-        : (isDelivery ? `Order placed. Awaiting warehouse preparation for delivery.` : `Order placed. Preparing for self-pickup.`);
-
-      const cleanId = ord.id.replace(/^LDG-/, '');
-      list.push({
-        id: `mord-${ord.id}`,
-        category: 'Order',
-        title: 'Order Placed to HSG+',
-        orderId: cleanId,
-        orderData: ord,
-        description: `#${cleanId}`,
-        timestamp: Number(ord.created_at || Date.now()),
-        badge: { label: badgeLabel, variant: badgeVariant },
-        iconType: 'order',
-        orderProgress: {
-          step,
-          statusText: badgeLabel,
-          fulfillment: isDelivery ? 'delivery' : 'collect',
-          deliveryAddress: ord.delivery_address,
-        },
-      });
-    });
-
-    // Also include any standalone shop_order transactions not in merch_orders
-    (db.transactions || [])
-      .filter((tx) => Boolean(currentUserId && tx.user_id && tx.user_id === currentUserId))
-      .filter((tx) => {
-        const txType = String(tx.type || '');
-        const titleLower = String(tx.title || '').toLowerCase();
-        return txType === 'shop_order' || titleLower.includes('redeem') || titleLower.includes('shop order');
-      })
-      .forEach((tx) => {
-        const fullTxText = `${tx.id} ${tx.title || ''} ${tx.description || ''}`;
-        const ordMatch = fullTxText.match(/ORD-\d+-\d+/i);
-        const resolvedOrdId = ordMatch ? ordMatch[0] : '';
-
-        // If this order is already in processedOrderIds, skip
-        if (resolvedOrdId && processedOrderIds.has(resolvedOrdId)) {
-          return;
-        }
-
-        // Check if db.merch_orders has this order
-        const existingMerchOrder = resolvedOrdId
-          ? (db.merch_orders || []).find((o) => o.id === resolvedOrdId || o.id.includes(resolvedOrdId) || resolvedOrdId.includes(o.id))
-          : null;
-
-        if (existingMerchOrder) {
-          processedOrderIds.add(existingMerchOrder.id);
-          const st = String(existingMerchOrder.status || 'pending').toLowerCase();
-          const isDelivered = st === 'delivered' || st === 'completed' || st === 'fulfilled';
-          const isDispatched = st === 'shipped' || st === 'out_for_delivery' || st === 'delivering';
-          const isReady = st === 'ready' || st === 'ready_for_pickup';
-          const isPreparing = st === 'preparing' || st === 'prepare' || st === 'processing';
-          const isCancelled = st === 'cancelled' || st === 'rejected';
-          const isDelivery = String(existingMerchOrder.fulfillment_method || existingMerchOrder.fulfillment || '').toLowerCase() === 'delivery';
-
-          let step = 1;
-          let badgeLabel = 'Order Placed';
-          let badgeVariant: 'blue' | 'amber' | 'emerald' | 'rose' | 'purple' | 'indigo' = 'blue';
-
-          if (isDelivered) {
-            step = 3;
-            badgeLabel = 'Delivered';
-            badgeVariant = 'emerald';
-          } else if (isDispatched || isReady || isPreparing) {
-            step = 2;
-            badgeLabel = 'Preparing';
-            badgeVariant = 'amber';
-          } else if (isCancelled) {
-            step = 0;
-            badgeLabel = 'Cancelled';
-            badgeVariant = 'rose';
-          } else {
-            step = 1;
-            badgeLabel = 'Order Placed';
-            badgeVariant = 'blue';
-          }
-
-          const cleanId = existingMerchOrder.id.replace(/^LDG-/, '');
-          list.push({
-            id: `mord-${existingMerchOrder.id}`,
-            category: 'Order',
-            title: 'Order Placed to HSG+',
-            orderId: cleanId,
-            orderData: existingMerchOrder,
-            description: `#${cleanId}`,
-            timestamp: Number(existingMerchOrder.created_at || tx.created_at || Date.now()),
-            badge: { label: badgeLabel, variant: badgeVariant },
-            iconType: 'order',
-            orderProgress: {
-              step,
-              statusText: badgeLabel,
-              fulfillment: isDelivery ? 'delivery' : 'collect',
-              deliveryAddress: existingMerchOrder.delivery_address,
-            },
-          });
-          return;
-        }
-
-        const cleanOrdId = resolvedOrdId || tx.id.replace(/^LDG-/, '');
-        processedOrderIds.add(cleanOrdId);
-
-        // Parse description: "Shop Order: 9x BOOM+ RUNNING CAP (Delivery ORD-1793164277529-1944)"
-        let parsedText = (tx.description || tx.title || '').replace(/^Shop Order:\s*/i, '');
-        const isDelivery = /delivery/i.test(parsedText) || /delivery/i.test(tx.title || '');
-        parsedText = parsedText.replace(/\s*\((Delivery|Self-Pickup|Pickup)[^)]*\)/i, '').trim();
-
-        let parsedQty = 1;
-        let parsedName = parsedText || 'Merch Item';
-        const qm = parsedText.match(/^(\d+)x\s+(.+)$/i);
-        if (qm) {
-          parsedQty = parseInt(qm[1], 10);
-          parsedName = qm[2].trim();
-        }
-
-        const ptsAmt = Math.abs(Number((tx as any).point ?? tx.amount_points ?? tx.points ?? 0));
-        const cashAmt = Math.abs(Number((tx as any).cashback ?? tx.amount_cashback ?? tx.amount ?? 0));
-        const fee = isDelivery ? (Number(db.settings.delivery_fee) || 4.5) : 0;
-
-        const syntheticOrder: MerchOrderRecord = {
-          id: cleanOrdId,
-          user_id: currentUserId,
-          user_phone: storedAuthPhone || db.user?.phone_number || '',
-          user_nickname: db.user?.nickname || 'Member',
-          items: [
-            {
-              name: parsedName,
-              qty: parsedQty,
-              points: ptsAmt,
-              cash: cashAmt > fee ? Number((cashAmt - fee).toFixed(2)) : 0,
-              payWith: ptsAmt > 0 ? 'points' : 'cashback',
-            },
-          ],
-          fulfillment: isDelivery ? 'delivery' : 'collect',
-          fulfillment_method: isDelivery ? 'delivery' : 'collect',
-          delivery_address: isDelivery ? (db.user?.address || 'Hantar di sini') : undefined,
-          delivery_fee: fee,
-          total_points: ptsAmt,
-          total_cash: cashAmt,
-          status: 'pending',
-          created_at: Number(tx.created_at || Date.now() - 86400000),
-        };
-
-        const cleanId = cleanOrdId.replace(/^LDG-/, '');
-        list.push({
-          id: `tx-shop-${tx.id}`,
-          category: 'Order',
-          title: 'Order Placed to HSG+',
-          orderId: cleanId,
-          orderData: syntheticOrder,
-          description: `#${cleanId}`,
-          timestamp: Number(tx.created_at || Date.now() - 86400000),
-          badge: { label: 'Order Placed', variant: 'blue' },
-          iconType: 'order',
-          orderProgress: {
-            step: 1,
-            statusText: 'Order Placed',
-            fulfillment: isDelivery ? 'delivery' : 'collect',
-          },
-        });
-      });
-
-    // 3. Contest Submissions (for entries that have 0 points or are not yet in ledger)
-    (db.contest_submissions || [])
-      .filter((s) => currentUserId && s.user_id === currentUserId)
-      .forEach((s) => {
-        // Prevent duplicate cards if this contest entry was already logged via transactions
-        const hasTx = list.some(
-          (it) =>
-            it.id.includes(s.id) ||
-            it.id === `tx-contest-LDG-${s.id}` ||
-            it.id === `tx-contest-LDG-CSUB-${s.id}` ||
-            it.id === `csub-${s.id}` ||
-            (s.contest_title &&
-              it.title.toLowerCase().includes(s.contest_title.toLowerCase()) &&
-              Math.abs(it.timestamp - Number(s.created_at || s.timestamp || 0)) < 60000)
-        );
-        if (hasTx) return;
-        const st = String(s.status || 'submitted').toLowerCase();
-        const isWinner = st === 'winner' || st === 'approved' || st === 'verified';
-        const isRejected = st === 'rejected';
-        list.push({
-          id: `csub-${s.id}`,
-          category: 'Reward',
-          title: `Contest Entry: ${s.contest_title || 'HSG+ Contest'}`,
-          description: isWinner
-            ? `Contest entry verified${s.prize_awarded ? ` (${s.prize_awarded})` : ''}.`
-            : isRejected
-            ? `Contest entry declined${(s as any).rejection_reason ? `: ${(s as any).rejection_reason}` : ''}.`
-            : 'Contest entry submitted for verification.',
-          timestamp: Number(s.created_at || s.timestamp || Date.now()),
-          badge: isRejected
-            ? { label: 'Declined', variant: 'rose' }
-            : isWinner
-            ? { label: 'Verified', variant: 'emerald' }
-            : { label: 'Submitted', variant: 'amber' },
-          iconType: isRejected ? 'alert' : 'gift',
-        });
-      });
-
-    // 4. Event Join & Check-in (from user's joined/checked-in events)
-    (db.events || [])
-      .filter(
-        (ev) => ev.user_status === 'joined' || ev.user_status === 'checked_in'
-      )
-      .forEach((ev) => {
-        const isCheckedIn = ev.user_status === 'checked_in';
-        const evTitleLower = (ev.title || '').toLowerCase().trim();
-        const alreadyAdded = list.some((it) => {
-          const itTitle = (it.title || '').toLowerCase();
-          const itDesc = (it.description || '').toLowerCase();
-          const itId = (it.id || '').toLowerCase();
-          return (
-            itId.includes(ev.id.toLowerCase()) ||
-            (evTitleLower && (itTitle.includes(evTitleLower) || itDesc.includes(evTitleLower)))
-          );
-        });
-        if (alreadyAdded) return;
-
-        list.push({
-          id: `ev-status-${ev.id}-${ev.user_status}`,
-          category: isCheckedIn ? 'Reward' : 'Account',
-          title: isCheckedIn
-            ? `Event Checked-In: ${ev.title}`
-            : `Event Joined: ${ev.title}`,
-          description: isCheckedIn
-            ? `Checked in at ${ev.location || 'Event Venue'}${
-                Number(ev.reward_points || 0) > 0 ? ` (+${ev.reward_points} pts)` : ''
-              }.`
-            : `RSVP confirmed for ${ev.title}. Check in at venue to earn +${ev.reward_points || 0} pts.`,
-          timestamp: Number(ev.date_timestamp || Date.now()),
-          badge: {
-            label: isCheckedIn ? 'Checked-In' : 'Joined',
-            variant: isCheckedIn ? 'emerald' : 'blue',
-          },
-          iconType: isCheckedIn ? 'check' : 'receipt',
-        });
-      });
-
-    // 5. User account audit logs directly from database (Register + profile updates)
-    const userLogs = Array.isArray(db.user?.logs) ? db.user!.logs : [];
-    let hasRegisterLog = false;
-    userLogs.forEach((logItem: any, idx: number) => {
-      const actionLower = String(logItem?.action || '').toLowerCase();
-      const noteLower = String(logItem?.note || '').toLowerCase();
-      if (actionLower.includes('register')) {
-        hasRegisterLog = true;
-      }
-      const isProfileUpdate =
-        actionLower.includes('profile') ||
-        actionLower.includes('member details') ||
-        noteLower.includes('member details');
+      const validCategory: ActivityItem['category'] =
+        item.category === 'Receipt Claim' ||
+        item.category === 'Profile & Settings' ||
+        item.category === 'Withdrawal' ||
+        item.category === 'Reward' ||
+        item.category === 'Account' ||
+        item.category === 'Order'
+          ? item.category
+          : defaultCategory;
 
       list.push({
-        id: `db-log-${logItem.timestamp || idx}`,
-        category: 'Account',
-        title: logItem.action || 'Account Activity',
-        description: logItem.note || 'Account event verified.',
-        timestamp: Number(logItem.timestamp || Date.now()),
+        id: item.id || `act-log-${item.timestamp || idx}`,
+        category: validCategory,
+        title: item.title || act,
+        description: item.description || item.note || 'Event recorded.',
+        timestamp: Number(item.timestamp || Date.now()),
         badge: {
-          label: isProfileUpdate ? 'Saved' : 'Verified',
-          variant: 'blue',
+          label: (badgeObj && badgeObj.label) || 'Verified',
+          variant: validVariant,
         },
-        iconType: 'shield',
+        iconType: (item.iconType || item.icon || defaultIcon) as ActivityItem['iconType'],
       });
     });
 
-    if (!hasRegisterLog && db.user) {
+    // Ensure registration log is present if not in logs yet
+    const hasReg = list.some((it) => it.title.toLowerCase().includes('register'));
+    if (!hasReg && db.user) {
       list.push({
-        id: `account-register-${db.user.id || db.user.phone_number || 'me'}`,
+        id: `account-register-${db.user.id || 'me'}`,
         category: 'Account',
         title: 'Account Registered',
         description: 'Account created and verified via WhatsApp.',
-        timestamp: Number(
-          db.user.created_at || db.user.last_active_timestamp || Date.now()
-        ),
+        timestamp: Number(db.user.created_at || Date.now()),
         badge: { label: 'Verified', variant: 'emerald' },
         iconType: 'shield',
-      });
-    }
-
-    // Ensure at least 24 total entries for smooth 8-card batch pagination testing
-    if (list.length < 24) {
-      BASE_SAMPLE_ACTIVITIES.forEach((sample) => {
-        if (!list.some((it) => it.id === sample.id || it.title === sample.title)) {
-          list.push(sample);
-        }
       });
     }
 
@@ -1154,16 +686,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         return true;
       })
       .sort((a, b) => b.timestamp - a.timestamp);
-  }, [
-    localActivities,
-    db.cashback_claims,
-    db.transactions,
-    db.contest_submissions,
-    db.events,
-    db.user,
-    isAuthenticated,
-    BASE_SAMPLE_ACTIVITIES,
-  ]);
+  }, [db.user, isAuthenticated, BASE_SAMPLE_ACTIVITIES]);
 
   // Withdrawal state
   const [withdrawAmount, setWithdrawAmount] = useState<string>(
