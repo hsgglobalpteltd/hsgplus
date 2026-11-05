@@ -113,18 +113,36 @@ const HsgMobileShell: React.FC = () => {
 
   const initialDeepLink = React.useMemo(() => parseInitialDeepLink(), []);
 
+  const ROUTE_ORDER: Record<ActiveRoute, number> = {
+    home: 0,
+    snap: 1,
+    events: 2,
+    account: 3,
+    contest: 4,
+    redeem: 5,
+    invite: 6,
+    transactions: 7,
+  };
+
   const [route, setRoute] = useState<ActiveRoute>(initialDeepLink.route);
+  const [slideDir, setSlideDir] = useState<'right' | 'left'>('right');
+  const [navKey, setNavKey] = useState<number>(0);
 
   const homeScrollPosRef = useRef<number>(0);
   const eventsScrollPosRef = useRef<number>(0);
 
-  const navigateTo = (newRoute: ActiveRoute) => {
+  const navigateTo = (newRoute: ActiveRoute, forceDirection?: 'right' | 'left') => {
     if (route === 'home' && newRoute !== 'home' && mainScrollRef.current) {
       homeScrollPosRef.current = mainScrollRef.current.scrollTop;
     }
     if (route === 'events' && newRoute !== 'events' && mainScrollRef.current) {
       eventsScrollPosRef.current = mainScrollRef.current.scrollTop;
     }
+    const currentOrder = ROUTE_ORDER[route] ?? 0;
+    const targetOrder = ROUTE_ORDER[newRoute] ?? 0;
+    const calculatedDir = targetOrder >= currentOrder ? 'right' : 'left';
+    setSlideDir(forceDirection || calculatedDir);
+    setNavKey((k) => k + 1);
     setIsContestScrolled(false);
     setHasContestUserScrolled(false);
     setRoute(newRoute);
@@ -237,9 +255,9 @@ const HsgMobileShell: React.FC = () => {
     setHasContestUserScrolled(false);
     if (contestBackRoute === 'events') {
       setContestBackRoute('home');
-      navigateTo('events');
+      navigateTo('events', 'left');
     } else {
-      navigateTo('home');
+      navigateTo('home', 'left');
     }
   };
 
@@ -249,7 +267,7 @@ const HsgMobileShell: React.FC = () => {
     if (eventBackRoute === 'contest') {
       setEventBackRoute('events');
       setSelectedEventId(null);
-      navigateTo('contest');
+      navigateTo('contest', 'left');
     } else {
       setSelectedEventId(null);
     }
@@ -267,11 +285,11 @@ const HsgMobileShell: React.FC = () => {
     } else if (route === 'events') {
       handleEventDetailBack();
     } else if (route === 'transactions') {
-      navigateTo('account');
+      navigateTo('account', 'left');
     } else if (route === 'account') {
-      navigateTo('home');
+      navigateTo('home', 'left');
     } else {
-      navigateTo('home');
+      navigateTo('home', 'left');
     }
   };
 
@@ -684,33 +702,50 @@ const HsgMobileShell: React.FC = () => {
         <main
           ref={mainScrollRef}
           onScroll={handleMainScroll}
-          className="w-full flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar pb-4 scroll-smooth"
+          className="w-full flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar pb-4 scroll-smooth"
         >
           {/* KEEP-ALIVE HOMEPAGE (Preserves loaded photos, state, and scroll position) */}
-          <div className={route === 'home' ? 'contents' : 'hidden'}>
+          <div
+            className={
+              route === 'home'
+                ? `w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`
+                : 'hidden'
+            }
+          >
             <HomePage
-              onOpenAccount={() => navigateTo('account')}
+              onOpenAccount={() => navigateTo('account', 'right')}
               onOpenEvents={(eventId) => {
                 setEventBackRoute('events');
                 setSelectedEventId(eventId || null);
-                navigateTo('events');
+                navigateTo('events', 'right');
               }}
               onOpenContest={(contestId) => {
                 setSelectedContestId(contestId || null);
-                navigateTo('contest');
+                navigateTo('contest', 'right');
               }}
               onOpenRedeemShop={() => {
                 setRedeemBackRoute('home');
-                navigateTo('redeem');
+                navigateTo('redeem', 'right');
               }}
             />
           </div>
 
           {route === 'snap' && (
-            <SnapCashbackPage onSuccessDone={() => navigateTo('account')} />
+            <div
+              key={`snap_${navKey}`}
+              className={`w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`}
+            >
+              <SnapCashbackPage onSuccessDone={() => navigateTo('account', 'right')} />
+            </div>
           )}
           {/* KEEP-ALIVE EVENTS PAGE (Preserves first 4 images loaded, event card state, and instant tab switch) */}
-          <div className={route === 'events' ? 'contents' : 'hidden'}>
+          <div
+            className={
+              route === 'events'
+                ? `w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`
+                : 'hidden'
+            }
+          >
             <EventsPage
               selectedEventId={selectedEventId}
               onSelectEvent={(id) => {
@@ -725,7 +760,7 @@ const HsgMobileShell: React.FC = () => {
                   setVenueToken(null);
                   if (eventBackRoute === 'contest') {
                     setEventBackRoute('events');
-                    navigateTo('contest');
+                    navigateTo('contest', 'left');
                   }
                 }
               }}
@@ -737,9 +772,9 @@ const HsgMobileShell: React.FC = () => {
                 setVenueToken(null);
                 if (eventBackRoute === 'contest') {
                   setEventBackRoute('events');
-                  navigateTo('contest');
+                  navigateTo('contest', 'left');
                 } else {
-                  navigateTo('events');
+                  navigateTo('events', 'left');
                 }
               }}
               backLabel={eventBackRoute === 'contest' ? 'Contest' : undefined}
@@ -753,59 +788,84 @@ const HsgMobileShell: React.FC = () => {
                 setSelectedContestId(contestId);
                 setContestAutoScroll(Boolean(autoScroll));
                 setContestBackRoute('events');
-                navigateTo('contest');
+                navigateTo('contest', 'right');
               }}
               scrollContainerRef={mainScrollRef}
             />
           </div>
           {route === 'contest' && (
-            <ContestPage
-              initialContestId={selectedContestId}
-              autoScrollToContent={contestAutoScroll}
-              onBack={handleContestBack}
-              onNavigateToEvent={(eventId) => {
-                if (eventId) setSelectedEventId(eventId);
-                setEventBackRoute('contest');
-                navigateTo('events');
-              }}
-            />
+            <div
+              key={`contest_${navKey}`}
+              className={`w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`}
+            >
+              <ContestPage
+                initialContestId={selectedContestId}
+                autoScrollToContent={contestAutoScroll}
+                onBack={handleContestBack}
+                onNavigateToEvent={(eventId) => {
+                  if (eventId) setSelectedEventId(eventId);
+                  setEventBackRoute('contest');
+                  navigateTo('events', 'left');
+                }}
+              />
+            </div>
           )}
           {route === 'redeem' && (
-            <RedeemShopPage onBack={() => navigateTo(redeemBackRoute)} />
+            <div
+              key={`redeem_${navKey}`}
+              className={`w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`}
+            >
+              <RedeemShopPage onBack={() => navigateTo(redeemBackRoute, 'left')} />
+            </div>
           )}
           {route === 'invite' && (
-            <InviteFriendsPage onBack={() => navigateTo('account')} />
+            <div
+              key={`invite_${navKey}`}
+              className={`w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`}
+            >
+              <InviteFriendsPage onBack={() => navigateTo('account', 'left')} />
+            </div>
           )}
           {route === 'transactions' && isAuthenticated && (
-            <TransactionHistoryPage
-              initialTab={txHistoryTab}
-              onBack={() => navigateTo('account')}
-              scrollContainerRef={mainScrollRef}
-            />
+            <div
+              key={`transactions_${navKey}`}
+              className={`w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`}
+            >
+              <TransactionHistoryPage
+                initialTab={txHistoryTab}
+                onBack={() => navigateTo('account', 'left')}
+                scrollContainerRef={mainScrollRef}
+              />
+            </div>
           )}
           {route === 'account' && (
-            <AccountPage
-              onBack={() => navigateTo('home')}
-              onOpenRedeemShop={() => {
-                setRedeemBackRoute('account');
-                navigateTo('redeem');
-              }}
-              onOpenInvite={() => {
-                if (!isAuthenticated) {
-                  openLoginModal();
-                  return;
-                }
-                navigateTo('invite');
-              }}
-              onOpenTransactions={(tab = 'cashback') => {
-                if (!isAuthenticated) {
-                  openLoginModal();
-                  return;
-                }
-                setTxHistoryTab(tab);
-                navigateTo('transactions');
-              }}
-            />
+            <div
+              key={`account_${navKey}`}
+              className={`w-full ${slideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'}`}
+            >
+              <AccountPage
+                onBack={() => navigateTo('home', 'left')}
+                onOpenRedeemShop={() => {
+                  setRedeemBackRoute('account');
+                  navigateTo('redeem', 'right');
+                }}
+                onOpenInvite={() => {
+                  if (!isAuthenticated) {
+                    openLoginModal();
+                    return;
+                  }
+                  navigateTo('invite', 'right');
+                }}
+                onOpenTransactions={(tab = 'cashback') => {
+                  if (!isAuthenticated) {
+                    openLoginModal();
+                    return;
+                  }
+                  setTxHistoryTab(tab);
+                  navigateTo('transactions', 'right');
+                }}
+              />
+            </div>
           )}
         </main>
 

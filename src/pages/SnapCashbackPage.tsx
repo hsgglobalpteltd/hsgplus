@@ -50,6 +50,7 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
   const [isSending, setIsSending] = useState<boolean>(false);
   const [isMilestonesExpanded, setIsMilestonesExpanded] = useState<boolean>(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
+  const [campSlideDir, setCampSlideDir] = useState<'right' | 'left'>('right');
   const milestonesCardRef = React.useRef<HTMLDivElement | null>(null);
 
   // Fast and smooth slide open with automatic bottom scroll
@@ -428,6 +429,9 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                   key={camp.id}
                   type="button"
                   onClick={(e) => {
+                    const currentIdx = activeCampaigns.findIndex((c) => c.id === activeCampaign?.id);
+                    const targetIdx = activeCampaigns.findIndex((c) => c.id === camp.id);
+                    setCampSlideDir(targetIdx >= currentIdx ? 'right' : 'left');
                     setActiveCampaignId(camp.id);
                     e.currentTarget.scrollIntoView({
                       behavior: 'smooth',
@@ -435,7 +439,7 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                       block: 'nearest',
                     });
                   }}
-                  className={`relative h-9 px-3.5 rounded-full font-bold text-xs shrink-0 whitespace-nowrap flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs ${
+                  className={`relative h-9 px-3.5 rounded-full font-bold text-xs shrink-0 whitespace-nowrap flex items-center gap-1.5 transition-all duration-200 active:scale-95 cursor-pointer shadow-2xs ${
                     isSelected
                       ? 'bg-[#141416] text-white border border-[#141416]'
                       : 'bg-white text-zinc-700 border border-zinc-200/90 hover:bg-zinc-50'
@@ -474,7 +478,13 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
           </p>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="w-full space-y-4">
+        <form
+          key={activeCampaign?.id}
+          onSubmit={handleSubmit}
+          className={`w-full space-y-4 ${
+            campSlideDir === 'right' ? 'animate-slide-fade-right' : 'animate-slide-fade-left'
+          }`}
+        >
           {/* 1. CAMPAIGN POSTER (4:5 or 1:1) & BASIC DETAILS */}
           <div className="w-full rounded-b-3xl overflow-hidden bg-white shadow-xs border-b border-zinc-200/60">
             {activeCampaigns && activeCampaigns.length > 0 ? (

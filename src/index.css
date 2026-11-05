@@ -373,5 +373,38 @@
   will-change: transform;
 }
 
+/* Directional Page & Tab Transitions (Buttery smooth, GPU accelerated) */
+@keyframes slideFadeInFromRight {
+  0% {
+    opacity: 0;
+    transform: translate3d(24px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slideFadeInFromLeft {
+  0% {
+    opacity: 0;
+    transform: translate3d(-24px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-slide-fade-right {
+  animation: slideFadeInFromRight 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-slide-fade-left {
+  animation: slideFadeInFromLeft 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
 
 
