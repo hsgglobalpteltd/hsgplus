@@ -576,7 +576,6 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   onChange={handleReceiptUpload}
                   className="hidden"
                 />
@@ -627,7 +626,6 @@ export const SnapCashbackPage: React.FC<SnapCashbackPageProps> = ({
                   <input
                     type="file"
                     accept="image/*"
-                    capture="environment"
                     onChange={handleReceiptUpload}
                     className="hidden"
                   />

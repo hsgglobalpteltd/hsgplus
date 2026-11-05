@@ -1446,7 +1446,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                       <input
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         onChange={handleReceiptUpload}
                         className="hidden"
                       />
@@ -1499,7 +1498,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         <input
                           type="file"
                           accept="image/*"
-                          capture="environment"
                           onChange={handleReceiptUpload}
                           className="hidden"
                         />
