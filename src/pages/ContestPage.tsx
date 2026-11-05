@@ -17,6 +17,8 @@ import {
   AlertCircle,
   ExternalLink,
   Ticket,
+  Globe,
+  Play,
 } from 'lucide-react';
 import { useHsgData } from '../context/HsgDataContext';
 import { compressImageFile } from '../lib/imageCompressor';
@@ -24,6 +26,18 @@ import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { SendingAnimationOverlay } from '../components/SendingAnimationOverlay';
 
 const LIVE_WORKER_URL = 'https://ib-v2.hsgglobalpteltd.workers.dev';
+
+interface UrlPreviewData {
+  url: string;
+  title: string;
+  description: string;
+  thumbnail_url: string;
+  domain: string;
+  platform: 'tiktok' | 'instagram' | 'youtube' | 'web';
+  is_video: boolean;
+  is_private: boolean;
+  author_name?: string;
+}
 
 interface ContestPageProps {
   initialContestId?: string | null;
@@ -57,6 +71,69 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const [totalAmount, setTotalAmount] = useState<number | ''>('');
   const [qty, setQty] = useState<number | ''>(1);
   const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({});
+  const [urlPreviews, setUrlPreviews] = useState<
+    Record<string, { loading: boolean; data: UrlPreviewData | null }>
+  >({});
+
+  // Debounced URL Preview Fetcher (unfurls TikTok, Instagram, YouTube & websites)
+  useEffect(() => {
+    const activeTimers: number[] = [];
+
+    Object.entries(extraAnswers).forEach(([key, rawVal]) => {
+      const val = (rawVal || '').trim();
+      if (!val || (!val.startsWith('http://') && !val.startsWith('https://'))) {
+        if (urlPreviews[key]) {
+          setUrlPreviews((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+        }
+        return;
+      }
+
+      // If already fetched or loading for the exact same URL, avoid refetching
+      if (urlPreviews[key]?.data?.url === val) return;
+
+      const timer = window.setTimeout(async () => {
+        setUrlPreviews((prev) => ({
+          ...prev,
+          [key]: { loading: true, data: prev[key]?.data || null },
+        }));
+
+        try {
+          const res = await fetch(
+            `${LIVE_WORKER_URL}/api/hsg-app/url-preview?url=${encodeURIComponent(val)}`
+          );
+          if (res.ok) {
+            const json = await res.json();
+            if (json.ok && json.preview) {
+              setUrlPreviews((prev) => ({
+                ...prev,
+                [key]: { loading: false, data: json.preview },
+              }));
+              return;
+            }
+          }
+          setUrlPreviews((prev) => ({
+            ...prev,
+            [key]: { loading: false, data: null },
+          }));
+        } catch {
+          setUrlPreviews((prev) => ({
+            ...prev,
+            [key]: { loading: false, data: null },
+          }));
+        }
+      }, 450);
+
+      activeTimers.push(timer);
+    });
+
+    return () => {
+      activeTimers.forEach((t) => window.clearTimeout(t));
+    };
+  }, [extraAnswers]);
   const [isEnteringAnother, setIsEnteringAnother] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
@@ -306,6 +383,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     setTotalAmount('');
     setQty(1);
     setExtraAnswers({});
+    setUrlPreviews({});
     setIsEnteringAnother(false);
   }, [contest?.id]);
 
@@ -1444,8 +1522,11 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                         ? 'https://...'
                         : 'Type your answer here...';
 
+                    const qKey = q.id || `q_${idx + 1}`;
+                    const previewState = urlPreviews[qKey];
+
                     return (
-                      <div key={q.id || idx} className="space-y-1.5">
+                      <div key={qKey} className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <label className="block text-xs font-bold text-white">
                             {idx + 1}. {q.question || (q as any).label || `Question ${idx + 1}`}
@@ -1461,17 +1542,121 @@ export const ContestPage: React.FC<ContestPageProps> = ({
                           inputMode={qType === 'number' ? 'numeric' : qType === 'url' ? 'url' : 'text'}
                           required
                           placeholder={placeholder}
-                          value={extraAnswers[q.id || `q_${idx + 1}`] || ''}
+                          value={extraAnswers[qKey] || ''}
                           onFocus={handleInputFocus}
                           onBlur={handleInputBlur}
                           onChange={(e) =>
                             setExtraAnswers((prev) => ({
                               ...prev,
-                              [q.id || `q_${idx + 1}`]: e.target.value,
+                              [qKey]: e.target.value,
                             }))
                           }
                           className="w-full h-11 px-3.5 rounded-2xl bg-white/10 text-white placeholder-zinc-500 text-xs border border-white/10 focus:border-[#FFEA00] focus:outline-none transition"
                         />
+
+                        {/* Interactive URL Live Preview Card */}
+                        {previewState && (
+                          <div className="pt-1.5">
+                            {previewState.loading ? (
+                              <div className="w-full h-18 rounded-2xl bg-white/5 border border-white/10 p-2.5 flex items-center gap-3 animate-pulse">
+                                <div className="w-13 h-13 rounded-xl bg-white/10 shrink-0 flex items-center justify-center">
+                                  <Loader2 className="w-4 h-4 text-zinc-400 animate-spin" />
+                                </div>
+                                <div className="flex-1 space-y-1.5">
+                                  <div className="h-3 bg-white/15 rounded w-2/3" />
+                                  <div className="h-2 bg-white/10 rounded w-1/3" />
+                                </div>
+                              </div>
+                            ) : previewState.data?.is_private ? (
+                              <div className="w-full p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex items-start gap-2.5 animate-in fade-in duration-200">
+                                <div className="w-7 h-7 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                                  <Lock className="w-3.5 h-3.5 text-amber-300" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-bold text-amber-300">
+                                    This link looks private
+                                  </div>
+                                  <p className="text-[11px] text-amber-200/80 mt-0.5 leading-snug">
+                                    Please make sure it's set to <span className="font-bold text-white">Public</span> so judges can view it!
+                                  </p>
+                                </div>
+                              </div>
+                            ) : previewState.data ? (
+                              previewState.data.is_video ? (
+                                /* Full-width 1:1 Square Video Thumbnail Preview (No Title or Caption) */
+                                <div
+                                  onClick={() =>
+                                    window.open(
+                                      previewState.data!.url,
+                                      '_blank',
+                                      'noopener,noreferrer'
+                                    )
+                                  }
+                                  className="group relative w-full aspect-square rounded-2xl overflow-hidden bg-black/40 border border-white/10 hover:border-white/20 transition cursor-pointer flex items-center justify-center animate-in fade-in duration-200"
+                                  title="Tap to watch video in new tab"
+                                >
+                                  {previewState.data.thumbnail_url ? (
+                                    <img
+                                      src={previewState.data.thumbnail_url}
+                                      alt="Video Thumbnail"
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    />
+                                  ) : (
+                                    <Globe className="w-10 h-10 text-zinc-500" />
+                                  )}
+
+                                  {/* Center Play Button Overlay (omitted for Instagram since Instagram cover image already includes native play button) */}
+                                  {previewState.data.platform !== 'instagram' && (
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                      <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center transition-transform group-hover:scale-105 active:scale-95">
+                                        <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                /* Standard Website Preview (Row layout with thumbnail + title + caption) */
+                                <div
+                                  onClick={() =>
+                                    window.open(
+                                      previewState.data!.url,
+                                      '_blank',
+                                      'noopener,noreferrer'
+                                    )
+                                  }
+                                  className="group w-full rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition cursor-pointer overflow-hidden p-2.5 flex items-center gap-3 relative animate-in fade-in duration-200"
+                                  title="Tap to preview website in new tab"
+                                >
+                                  {/* Thumbnail / Domain Icon */}
+                                  <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-black/40 shrink-0 flex items-center justify-center border border-white/10">
+                                    {previewState.data.thumbnail_url ? (
+                                      <img
+                                        src={previewState.data.thumbnail_url}
+                                        alt="Preview Thumbnail"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      />
+                                    ) : (
+                                      <Globe className="w-5 h-5 text-zinc-400" />
+                                    )}
+                                  </div>
+
+                                  {/* Preview Info: Title & Caption/Description Only */}
+                                  <div className="flex-1 min-w-0 pr-1 space-y-1">
+                                    <div className="text-xs font-bold text-white line-clamp-2 leading-snug group-hover:text-[#FFEA00] transition-colors">
+                                      {previewState.data.title || previewState.data.domain}
+                                    </div>
+
+                                    {previewState.data.description && (
+                                      <p className="text-[11px] text-zinc-400 line-clamp-2 leading-snug">
+                                        {previewState.data.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            ) : null}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
