@@ -138,6 +138,25 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const [isSending, setIsSending] = useState<boolean>(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
+  const termsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Always reset scroll to absolute top and lock background when opening terms modal
+  useEffect(() => {
+    if (showTermsModal) {
+      const origOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+
+      // Scroll modal container and window to top
+      if (termsContainerRef.current) {
+        termsContainerRef.current.scrollTop = 0;
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+
+      return () => {
+        document.body.style.overflow = origOverflow;
+      };
+    }
+  }, [showTermsModal]);
 
   // Reference for smooth scrolling directly down past posters to the submission/status section
   const contentAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -1850,33 +1869,29 @@ export const ContestPage: React.FC<ContestPageProps> = ({
 
       {/* Full Page Contest Terms & Conditions View */}
       {showTermsModal && contest && (
-        <div className="fixed inset-0 z-50 bg-[#F6F6F9] overflow-y-auto flex flex-col font-sans animate-in fade-in duration-200">
+        <div
+          ref={termsContainerRef}
+          className="fixed inset-0 z-50 bg-[#F6F6F9] overflow-y-auto font-sans animate-in fade-in duration-200"
+        >
           {/* Top Sticky Header */}
-          <div className="sticky top-0 z-10 bg-[#FFEA00] border-b border-black/10 px-4 py-3 flex items-center justify-between relative shadow-xs">
+          <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 py-3 flex items-center justify-between shadow-xs">
             <button
               type="button"
               onClick={() => setShowTermsModal(false)}
-              className="z-10 flex items-center gap-1 text-xs font-extrabold text-[#141416] px-3 py-1.5 rounded-full bg-white hover:bg-white/90 shadow-2xs active:scale-95 transition cursor-pointer"
+              className="flex items-center gap-1.5 text-xs font-bold text-zinc-800 hover:text-zinc-950 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 transition cursor-pointer"
             >
-              <ArrowLeft className="w-4 h-4 text-[#141416]" />
+              <ArrowLeft className="w-4 h-4 text-zinc-700" />
               <span>Back</span>
             </button>
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <h2 className="text-sm font-extrabold text-[#141416] tracking-tight">
-                Terms &amp; Conditions
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowTermsModal(false)}
-              className="z-10 w-8 h-8 rounded-full bg-white hover:bg-white/90 flex items-center justify-center text-[#141416] shadow-2xs active:scale-95 transition cursor-pointer"
-            >
-              <X className="w-4 h-4 text-[#141416]" />
-            </button>
+            <h2 className="text-sm font-extrabold text-[#141416] tracking-tight truncate px-2 text-center">
+              Terms &amp; Conditions
+            </h2>
+            {/* Visual Balance Spacer (no duplicate close button) */}
+            <div className="w-[72px]" />
           </div>
 
           {/* Full Page Content Body */}
-          <div className="flex-1 max-w-lg w-full mx-auto p-5 pb-16 space-y-4">
+          <div className="max-w-lg w-full mx-auto p-4 sm:p-5 pb-16 space-y-4">
             <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left">
               <div className="border-b border-slate-100 pb-3">
                 <span className="text-[10px] font-extrabold uppercase text-[#0B57D0] tracking-wider">
