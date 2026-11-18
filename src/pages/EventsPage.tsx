@@ -24,6 +24,7 @@ import {
 import { useHsgData } from '../context/HsgDataContext';
 import { HsgEvent, EventCategory } from '../types';
 import { isImageLoaded, markImageLoaded } from '../lib/imagePreloader';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 function EventCardThumbnail({
   src,
@@ -1801,8 +1802,15 @@ export const EventsPage: React.FC<EventsPageProps> = ({
               ))}
             </div>
           ) : (
-            <div className="w-full flex-1 min-h-[300px] p-6 rounded-3xl bg-white text-center text-xs font-medium text-zinc-400 flex items-center justify-center">
-              No events
+            <div className="w-full flex-1 min-h-[300px] p-6 rounded-3xl bg-white border border-slate-100 shadow-xs flex items-center justify-center select-none overflow-hidden">
+              <div className="w-36 h-36 sm:w-44 sm:h-44 flex items-center justify-center">
+                <DotLottieReact
+                  src="/event-venue.lottie"
+                  loop
+                  autoplay
+                  className="w-full h-full object-contain pointer-events-none"
+                />
+              </div>
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Calendar,
@@ -44,6 +44,8 @@ interface ContestPageProps {
   onBack: () => void;
   onNavigateToEvent?: (eventId?: string) => void;
   autoScrollToContent?: boolean;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  onTermsOpenChange?: (isOpen: boolean, closeTermsFn: () => void) => void;
 }
 
 export const ContestPage: React.FC<ContestPageProps> = ({
@@ -51,6 +53,8 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   onBack,
   onNavigateToEvent,
   autoScrollToContent = false,
+  scrollContainerRef,
+  onTermsOpenChange,
 }) => {
   const { db, submitContestEntry, showToast, isAuthenticated, openLoginModal } = useHsgData();
 
@@ -138,25 +142,30 @@ export const ContestPage: React.FC<ContestPageProps> = ({
   const [isSending, setIsSending] = useState<boolean>(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState<boolean>(false);
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
-  const termsContainerRef = useRef<HTMLDivElement | null>(null);
+  const savedScrollTopRef = useRef<number>(0);
 
-  // Always reset scroll to absolute top and lock background when opening terms modal
-  useEffect(() => {
-    if (showTermsModal) {
-      const origOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-
-      // Scroll modal container and window to top
-      if (termsContainerRef.current) {
-        termsContainerRef.current.scrollTop = 0;
+  const handleCloseTerms = useCallback(() => {
+    setShowTermsModal(false);
+    onTermsOpenChange?.(false, () => {});
+    window.setTimeout(() => {
+      if (scrollContainerRef?.current) {
+        scrollContainerRef.current.scrollTo({
+          top: savedScrollTopRef.current,
+          behavior: 'instant' as ScrollBehavior,
+        });
       }
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    }, 10);
+  }, [onTermsOpenChange, scrollContainerRef]);
 
-      return () => {
-        document.body.style.overflow = origOverflow;
-      };
+  const handleOpenTerms = () => {
+    savedScrollTopRef.current = scrollContainerRef?.current?.scrollTop || 0;
+    setShowTermsModal(true);
+    onTermsOpenChange?.(true, handleCloseTerms);
+    if (scrollContainerRef?.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
     }
-  }, [showTermsModal]);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+  };
 
   // Reference for smooth scrolling directly down past posters to the submission/status section
   const contentAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -667,6 +676,61 @@ export const ContestPage: React.FC<ContestPageProps> = ({
     if (!clean) return phone;
     return `*******${clean.slice(-4)}`;
   };
+
+  // Dedicated Contest Terms & Conditions Page View (No duplicate back button, uses fixed shell moving button)
+  if (showTermsModal && contest) {
+    return (
+      <div className="w-full px-5 pt-0.5 pb-8 font-primary animate-in fade-in duration-150">
+        {/* Top Header Row: Placeholder space for shell's moving back button on left, Title in center */}
+        <div className="flex items-center justify-between min-h-[36px] py-0.5">
+          {/* Placeholder space for the single fluid back button in the fixed header */}
+          <div className="w-9 h-9 shrink-0" aria-hidden="true" />
+          <h2 className="text-sm font-extrabold text-[#141416] tracking-tight truncate px-2 text-center">
+            Terms &amp; Conditions
+          </h2>
+          <div className="w-9 h-9 shrink-0" aria-hidden="true" />
+        </div>
+
+        {/* Full Page Content Body */}
+        <div className="max-w-lg w-full mx-auto space-y-4 mt-2">
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left">
+            <div className="border-b border-slate-100 pb-3">
+              <span className="text-[10px] font-extrabold uppercase text-[#0B57D0] tracking-wider">
+                Contest Rules &amp; Terms
+              </span>
+              <h1 className="text-base font-extrabold text-[#141416] mt-0.5">
+                {contest.frontpage_title || contest.title}
+              </h1>
+              {contest.requirement_note && (
+                <p className="text-xs text-zinc-500 mt-1">
+                  Entry Requirement: <span className="font-semibold text-zinc-800">{contest.requirement_note}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Terms Paragraph */}
+            <div className="text-xs text-zinc-700 leading-relaxed whitespace-pre-line font-normal space-y-2">
+              {contest.terms_and_conditions?.trim() ? (
+                contest.terms_and_conditions
+              ) : (
+                <div className="text-zinc-500 italic py-4">
+                  Standard contest terms and conditions apply. By participating and submitting a receipt, entrants agree to comply with all official contest requirements, eligibility rules, and organizer verification policies.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCloseTerms}
+            className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center cursor-pointer"
+          >
+            <span>Back to Contest</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full px-5 pt-0.5 pb-8 font-primary">
@@ -1716,7 +1780,7 @@ export const ContestPage: React.FC<ContestPageProps> = ({
           <div className="pt-2 pb-6 text-center">
             <button
               type="button"
-              onClick={() => setShowTermsModal(true)}
+              onClick={handleOpenTerms}
               className="text-xs font-semibold text-zinc-400 hover:text-zinc-700 underline underline-offset-4 transition cursor-pointer"
             >
               Contest Terms &amp; Conditions
@@ -1866,69 +1930,6 @@ export const ContestPage: React.FC<ContestPageProps> = ({
           showToast('Contest entry submitted successfully!');
         }}
       />
-
-      {/* Full Page Contest Terms & Conditions View */}
-      {showTermsModal && contest && (
-        <div
-          ref={termsContainerRef}
-          className="fixed inset-0 z-50 bg-[#F6F6F9] overflow-y-auto font-sans animate-in fade-in duration-200"
-        >
-          {/* Top Sticky Header */}
-          <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 py-3 flex items-center justify-between shadow-xs">
-            <button
-              type="button"
-              onClick={() => setShowTermsModal(false)}
-              className="flex items-center gap-1.5 text-xs font-bold text-zinc-800 hover:text-zinc-950 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 transition cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4 text-zinc-700" />
-              <span>Back</span>
-            </button>
-            <h2 className="text-sm font-extrabold text-[#141416] tracking-tight truncate px-2 text-center">
-              Terms &amp; Conditions
-            </h2>
-            {/* Visual Balance Spacer (no duplicate close button) */}
-            <div className="w-[72px]" />
-          </div>
-
-          {/* Full Page Content Body */}
-          <div className="max-w-lg w-full mx-auto p-4 sm:p-5 pb-16 space-y-4">
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left">
-              <div className="border-b border-slate-100 pb-3">
-                <span className="text-[10px] font-extrabold uppercase text-[#0B57D0] tracking-wider">
-                  Contest Rules &amp; Terms
-                </span>
-                <h1 className="text-base font-extrabold text-[#141416] mt-0.5">
-                  {contest.frontpage_title || contest.title}
-                </h1>
-                {contest.requirement_note && (
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Entry Requirement: <span className="font-semibold text-zinc-800">{contest.requirement_note}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Terms Paragraph */}
-              <div className="text-xs text-zinc-700 leading-relaxed whitespace-pre-line font-normal space-y-2">
-                {contest.terms_and_conditions?.trim() ? (
-                  contest.terms_and_conditions
-                ) : (
-                  <div className="text-zinc-500 italic py-4">
-                    Standard contest terms and conditions apply. By participating and submitting a receipt, entrants agree to comply with all official contest requirements, eligibility rules, and organizer verification policies.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowTermsModal(false)}
-              className="w-full h-12 rounded-full bg-[#141416] hover:bg-zinc-800 text-white font-extrabold text-xs shadow-md transition active:scale-[0.99] flex items-center justify-center cursor-pointer"
-            >
-              <span>Back to Contest</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

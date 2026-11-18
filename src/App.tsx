@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   ArrowLeft,
@@ -145,6 +145,8 @@ const HsgMobileShell: React.FC = () => {
     setNavKey((k) => k + 1);
     setIsContestScrolled(false);
     setHasContestUserScrolled(false);
+    setIsContestShowingTerms(false);
+    contestCloseTermsRef.current = null;
     setRoute(newRoute);
     try {
       sessionStorage.setItem('hsg_active_route', newRoute);
@@ -273,6 +275,18 @@ const HsgMobileShell: React.FC = () => {
     }
   };
 
+  const [isContestShowingTerms, setIsContestShowingTerms] = useState<boolean>(false);
+  const contestCloseTermsRef = useRef<(() => void) | null>(null);
+
+  const handleTermsOpenChange = useCallback((isOpen: boolean, closeFn: () => void) => {
+    setIsContestShowingTerms(isOpen);
+    contestCloseTermsRef.current = closeFn;
+    if (isOpen) {
+      setIsContestScrolled(false);
+      setHasContestUserScrolled(false);
+    }
+  }, []);
+
   const handleFluidBack = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) {
       e.preventDefault();
@@ -281,6 +295,10 @@ const HsgMobileShell: React.FC = () => {
     setIsContestScrolled(false);
     setHasContestUserScrolled(false);
     if (route === 'contest') {
+      if (isContestShowingTerms && contestCloseTermsRef.current) {
+        contestCloseTermsRef.current();
+        return;
+      }
       handleContestBack();
     } else if (route === 'events') {
       handleEventDetailBack();
@@ -802,6 +820,8 @@ const HsgMobileShell: React.FC = () => {
                 initialContestId={selectedContestId}
                 autoScrollToContent={contestAutoScroll}
                 onBack={handleContestBack}
+                scrollContainerRef={mainScrollRef}
+                onTermsOpenChange={handleTermsOpenChange}
                 onNavigateToEvent={(eventId) => {
                   if (eventId) setSelectedEventId(eventId);
                   setEventBackRoute('contest');
